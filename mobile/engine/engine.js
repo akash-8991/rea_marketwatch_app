@@ -11,6 +11,7 @@ import { BhavcopySource, INDEX_SYMBOLS } from './bhavcopy.js';
 import { OptionFeed } from './optionfeed.js';
 import { inSessionHours, lastSessionDate, marketState } from './marketclock.js';
 import { summarize } from './options.js';
+import { migrate } from './migrations.js';
 
 export const VERSION = '0.3.0-mobile';
 const MAX_UPLOAD = 2_000_000;
@@ -30,6 +31,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
   const market = new Market({ nse, snaps, cache, settings: cfg, now: () => new Date(now()) });
   const news = new News({ cache, snaps, fetchFn, enabled: cfg.news, delayMs: cfg.feedDelayMs ?? 200, now: () => new Date(now()) });
   const feed = new OptionFeed({ source: optionSource || new BhavcopySource({ now }), store: opts, now });
+  const ready = migrate(storage, { migrations: settings.migrations, current: settings.schemaVersion }).then(() => null, (e) => e);   // data upgrade runs before the first request is served
   const started = now();
   let bootRefresh = null;   // the one background refresh in flight
 
@@ -166,6 +168,8 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
   /** handle('GET', '/api/stock/TCS', {token, headers, body}) */
   async function handle(method, rawPath, { token = null, headers = {}, body = '' } = {}) {
     const u = new URL(rawPath, 'http://app.local'), p = u.pathname, qs = u.searchParams;
+    const bad = await ready;
+    if (bad) return err(500, `Your saved data was not changed. ${String(bad.message).slice(0, 200)}`, { dataUpgrade: false });
     try {
       const user = cfg.requireLogin ? await accounts.userForToken(token) : { pk: 0, userId: 'local', name: 'You' };
       if (cfg.requireLogin && p.startsWith('/api/') && !PUBLIC.has(p) && !user) return err(401, 'authentication required');

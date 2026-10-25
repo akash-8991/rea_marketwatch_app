@@ -137,6 +137,9 @@ WantedBy=default.target
 Health checks for supervisors: `GET /healthz` (alive) and `GET /readyz` (ready to serve data).
 
 ## 7. Upgrade, back up, uninstall
+**Your user ID and password survive upgrades.** Accounts live in `marketlens.db` in the data folder, which an upgrade does not touch; the
+database migrates itself on first start. Verified by creating an account on 0.2.0, installing 0.2.1 over it and signing in with the same
+password (the audit chain stayed intact). With Docker, the `/data` volume does the same job.
 - **Upgrade**: `pip install --upgrade marketlens-<new>.whl`. The database upgrades itself on first start; older audit
   entries still verify. Stop the app first and copy the data folder if you want a rollback point.
 - **Back up**: stop the app and copy `marketlens.db` (it contains account details and the audit log; keep the copy private).

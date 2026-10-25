@@ -34,6 +34,7 @@ The first screen asks you to create an account; after that you sign in with your
 (even after closing the app) until you sign out, for at most 15 days. Everything is
 stored on your own device (phone storage, the container's `/data` volume, or your user data folder).
 
+Updating keeps your user ID, password and sign-in (install the new version over the old one; do not uninstall).
 Everywhere: increases are green and decreases red, table text never wraps (tables scroll sideways), and news and updates use a medium text size.
 
 Guides: **[docs/INSTALL.md](docs/INSTALL.md)** (install, containers, background running, upgrade, backup, troubleshooting),

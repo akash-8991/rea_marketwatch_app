@@ -29,6 +29,15 @@ git tag mobile-v0.5.0 && git push origin mobile-v0.5.0   # Android APK as a GitH
 ```
 The Android version code is the workflow run number, so each build can update the previous one if signed with the same key.
 
+## Rules that keep users' accounts across updates
+These are checked by tests (`mobile/tests/upgrade.test.mjs`, the Python migration tests) and by the build logs:
+1. Never change the Android application id, the web scheme in `mobile/capacitor.config.json`, or the IndexedDB name.
+2. Always sign with the same key (secret `MARKETLENS_DEBUG_KEYSTORE`); compare the signer fingerprint in the build log with the previous release.
+3. Never lower the version code (it is the workflow run number, so it only rises).
+4. If you change how accounts or snapshots are stored, add a migration in `mobile/engine/migrations.js` (and raise `CURRENT_SCHEMA`);
+   desktop: a column-adding step in `optiondb._migrate`. Do not edit stored values anywhere else.
+5. Before a release, install the new build over the previous one on a phone, sign in, and confirm the account is still there.
+
 ## Checking a build
 - **Actions tab**: both workflows should be green; the APK job prints the file's size, checksum and permissions
   (only `INTERNET` is expected).

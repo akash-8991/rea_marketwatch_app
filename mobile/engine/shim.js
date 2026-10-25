@@ -15,6 +15,8 @@ export function installEngine(win = window, overrides = {}) {
   const realFetch = win.fetch.bind(win);
   const engine = createEngine({ storage: new IdbStorage(), fetchFn: realFetch, settings: savedSettings(), ...overrides });
   win.MLEngine = engine;
+  // Ask the system not to evict the app's storage when space is low (accounts and saved data must survive).
+  try { win.navigator.storage && win.navigator.storage.persist && win.navigator.storage.persist(); } catch (e) { /* not supported */ }
   win.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url;
     if (!/^\/api\//.test(url) && !/^\/(healthz)$/.test(url)) return realFetch(input, init);

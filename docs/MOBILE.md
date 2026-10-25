@@ -29,6 +29,20 @@ Android 7.0 or newer.
 | Audit log (hash-chained) | Yes, and it uses the same hash formula as the desktop app |
 | Saved last data when offline or when NSE blocks us | Yes (shown as **Stale**) |
 
+## 2a. Updating keeps your user ID, password and sign-in
+Install a newer APK over the old one (do not uninstall): your account, password, saved option data, audit log and even your current
+sign-in stay as they were. This relies on four things that must never change between releases, and a test fails the build if one does:
+the application id (`io.github.akash8991.marketlens`), the signing key, the app's web address (`https://localhost`) and the name of its
+database. On top of that, the saved-data format is versioned (`mobile/engine/migrations.js`): a release that changes the format first copies
+your data to a backup, converts it, and rolls everything back if anything goes wrong; an older build never touches data written by a newer one.
+The app also asks Android not to clear its storage when the phone is short of space.
+
+What this cannot protect:
+- **Uninstalling the app deletes its data** (Android's rule). Use "Install" over the top instead.
+- **0.3.0 to 0.3.3 were signed with other keys**; Android refuses to install over them, so they must be uninstalled once. Every build from
+  0.3.4 on uses the stable key and updates cleanly.
+- **Clearing the app's storage** in Android settings, or a factory reset, removes the accounts. There is no cloud copy (backups are off on purpose).
+
 ## 2b. Speed
 Loading is built around three rules, measured against live NSE:
 - **Saved data first.** Every screen answers at once from what the phone already holds and refreshes behind the scenes (the
@@ -155,6 +169,10 @@ not a standalone app and the desktop server is deliberately bound to `127.0.0.1`
   Home, Markets, Screener, Stock page, and the Option chain loading by itself from a real excerpt of NSE's 23-Oct-2026 file.
 - Speed, with tests: one bulk quote instead of per-stock calls, session reuse under a 60% misroute rate, answering at once while
   NSE hangs. A live cold load of the home page took about 2.3 s (one measurement, one network; yours will differ).
+- Updates: accounts, a live sign-in session and saved option data written by one release are read by the next (tests simulate a release
+  update on the same storage); a failing data migration rolls back completely; newer data is never touched by an older build. Not tested:
+  an actual APK-over-APK install on a phone (Android's side of this needs the same key, which the build log's signer fingerprint confirms
+  from 0.3.4 on).
 - Market hours: the clock rules (session edges, weekends, holiday recognition) and a simulated trading day: live prices move on the next
   refresh, nothing is re-fetched inside the minute, the close is fetched once and kept, a holiday is not shown as "Live", and the option
   chain's spot and at-the-money row follow the live price. One bug found and fixed by these tests: a refresh could overwrite the saved
