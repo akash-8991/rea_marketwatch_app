@@ -14,13 +14,13 @@ Check Python: `python3 --version` (on Windows: `py --version`).
 ## 2. Install
 
 ### Option A: from the release package (recommended)
-Download `marketlens-0.2.1-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
+Download `marketlens-0.2.2-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
 
 ```bash
 shasum -a 256 -c SHA256SUMS.txt          # macOS/Linux: checks both files; "OK" for the one you downloaded
 python3 -m venv ~/marketlens-env         # a private environment keeps it separate from other Python tools
 source ~/marketlens-env/bin/activate     # Windows: %USERPROFILE%\marketlens-env\Scripts\activate
-pip install marketlens-0.2.1-py3-none-any.whl
+pip install marketlens-0.2.2-py3-none-any.whl
 marketlens
 ```
 (`shasum -c` reports "FAILED open or read" for a file you did not download; that is expected.)

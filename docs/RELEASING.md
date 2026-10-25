@@ -24,8 +24,8 @@ against the Python engine's output (`android.yml`). Pull requests run tests and 
 ```bash
 # 1. bump versions (mobile/package.json is the Android version): pyproject.toml + src/marketlens/__init__.py (desktop), mobile/package.json (Android), update docs
 # 2. make sure main is green (Actions tab), then:
-git tag v0.2.1        && git push origin v0.2.1          # container image :0.2.1 and :0.2
-git tag mobile-v0.5.0 && git push origin mobile-v0.5.0   # Android APK as a GitHub Release
+git tag v0.2.2        && git push origin v0.2.2          # container image :0.2.2 and :0.2
+git tag mobile-v0.5.2 && git push origin mobile-v0.5.2   # Android APK as a GitHub Release
 ```
 The Android version code is the workflow run number, so each build can update the previous one if signed with the same key.
 
@@ -37,6 +37,11 @@ These are checked by tests (`mobile/tests/upgrade.test.mjs`, the Python migratio
 4. If you change how accounts or snapshots are stored, add a migration in `mobile/engine/migrations.js` (and raise `CURRENT_SCHEMA`);
    desktop: a column-adding step in `optiondb._migrate`. Do not edit stored values anywhere else.
 5. Before a release, install the new build over the previous one on a phone, sign in, and confirm the account is still there.
+
+## Visual checks that automated tests cannot do alone
+- Green/red: a CSS class on a cell is not proof the cell is coloured (a more specific rule can win). Check the *computed* colour of every
+  `.up`/`.down` element on Home, Markets, Screener, Option chain and Updates, in light and dark mode. `tests/test_design.py` guards the rule.
+- Open Markets and Home at phone width: stock cells show only the symbol, tables do not wrap and scroll sideways inside their box.
 
 ## Checking a build
 - **Actions tab**: both workflows should be green; the APK job prints the file's size, checksum and permissions

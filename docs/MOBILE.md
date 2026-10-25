@@ -67,7 +67,8 @@ live call), made two at a time, so they arrive over a few seconds with the most-
 
 ## 2d. Reading the screens
 - **Green and red:** every increase is green and every decrease red (prices, changes, 30-day moves, change in open interest,
-  score signs, and the figures in generated market updates). Signed values also carry a "+" or "−", so colour is never the only cue.
+  score signs, and the figures in generated market updates), including the Change columns of the stock tables on Home, Markets and the Watchlist. Signed values also carry a "+" or "−", so colour is never the only cue.
+- **Stock tables show just the stock symbol** (no sector line under it), so each stock is one row of one line; use the sector filter on Markets.
 - **Tables never wrap.** Text stays on one line and a wide table scrolls sideways inside its own box; the page itself never scrolls sideways.
 - **News and updates** use a medium text size (headlines 14 px, meta lines 13 px, update headlines 18 px).
 

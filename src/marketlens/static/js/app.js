@@ -45,7 +45,7 @@ startVitals();
         <span class="tval" data-idx="${ix.id}">${money(ix.last)}</span><span data-idxchg="${ix.id}"></span></a>`).join('')}</div>`;
   }
   function stockRows(list) {
-    return list.map((s) => `<tr><td>${symLink(s)}${secTag(s)}</td>
+    return list.map((s) => `<tr><td>${symLink(s)}</td>
       <td class="num" data-px="${s.sym}">${money(s.price)}</td><td class="num" data-chg="${s.sym}"></td></tr>`).join('');
   }
   const bySort = (f) => [...stocks].sort(f);
@@ -158,7 +158,7 @@ startVitals();
         <div class="toolbar"><label>Sort by <select id="mkt-sort">${[['chg', '% change'], ['p30', '30-day %'], ['val', 'Turnover'], ['pos', '52-week position'], ['div', 'Dividend yield']].map(([v, l]) => `<option value="${v}" ${v === sort ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label>Sector <select id="mkt-sec"><option value="">All</option>${D.sectors.map((x) => `<option>${esc(x)}</option>`).join('')}</select></label></div>
         <div class="scroll"><table class="tbl" id="mkt-table"><thead><tr><th>Stock</th><th class="num">Price</th><th class="num">Change</th><th class="num">30d %</th><th class="num">52w pos</th><th class="num">Turnover ₹cr</th><th class="num">Div %</th></tr></thead>
-        <tbody>${[...stocks].sort(cmp).map((s) => `<tr data-sector="${esc(s.sector)}"><td>${symLink(s)}${secTag(s)}</td><td class="num" data-px="${s.sym}"></td><td class="num" data-chg="${s.sym}"></td>
+        <tbody>${[...stocks].sort(cmp).map((s) => `<tr data-sector="${esc(s.sector)}"><td>${symLink(s)}</td><td class="num" data-px="${s.sym}"></td><td class="num" data-chg="${s.sym}"></td>
           <td class="num ${cls(s.pct30 ?? 0)}">${s.pct30 == null ? '—' : signed(s.pct30)}</td><td class="num">${pos52(s) == null ? '—' : pos52(s).toFixed(0) + '%'}</td>
           <td class="num">${money(s.valueCr, 0)}</td><td class="num">${s.div == null ? '—' : s.div}</td></tr>`).join('')}</tbody></table></div>
         <p class="muted">Sectors are a static classification maintained in this demo (NSE does not supply them); “Other” means unclassified. Dividend yield = trailing-12-month dividends ÷ price${D.extrasReady ? '' : ' (still loading)'}.</p>

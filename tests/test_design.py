@@ -60,6 +60,14 @@ class StylesheetRules(unittest.TestCase):
         self.assertEqual(re.findall(r"#[0-9a-fA-F]{3,8}\b", body), [], "use var(--token) instead")
         self.assertEqual(re.findall(r"rgb\(", re.sub(r"--shadow[^;]*;", "", body)), [])
 
+    def test_up_and_down_colours_beat_the_table_text_colour(self):
+        # ".tbl td { color: var(--text) }" outweighs a bare ".up", which once left every change cell in a table dark instead of green/red
+        self.assertRegex(CSS, r"\.tbl td\.up[^{]*\{\s*color:\s*var\(--up\)")
+        self.assertRegex(CSS, r"\.tbl td\.down[^{]*\{\s*color:\s*var\(--down\)")
+
+    def test_tables_do_not_wrap_their_text(self):
+        self.assertRegex(CSS, r"\.tbl th, \.tbl td \{ white-space: nowrap; \}")
+
     def test_accessibility_rules_present(self):
         self.assertIn(":focus-visible", CSS)
         self.assertIn("prefers-reduced-motion: reduce", CSS)
