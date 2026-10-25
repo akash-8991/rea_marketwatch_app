@@ -25,7 +25,7 @@ jobs:
         with: { node-version: 22 }
       - name: JavaScript engine tests (golden outputs from the Python engine + end-to-end with a fake NSE server)
         working-directory: mobile
-        run: node --test tests/
+        run: node --test
 
   apk:
     needs: engine-tests

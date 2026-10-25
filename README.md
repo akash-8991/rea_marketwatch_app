@@ -176,7 +176,7 @@ python tools/loadtest.py --url http://127.0.0.1:8080 --concurrency 1 16 --second
 pip wheel . --no-deps -w dist                           # build the wheel
 ```
 
-Mobile engine tests (Node 22+, no dependencies): `cd mobile && node --test tests/`. They compare the JavaScript engine with
+Mobile engine tests (Node 22+, no dependencies): `cd mobile && node --test`. They compare the JavaScript engine with
 the Python engine's output stored in `mobile/tests/golden.json` (regenerate with
 `PYTHONPATH=src python3 mobile/scripts/gen-golden.py`).
 

@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test tests/",
+    "test": "node --test",
     "build:www": "node scripts/build-www.mjs",
     "android:sync": "npm run build:www && npx cap sync android",
     "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug"
