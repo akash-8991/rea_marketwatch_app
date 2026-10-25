@@ -4,7 +4,8 @@
 import { lock } from './storage.js';
 import { sha256Hex } from './options.js';
 
-export const SESSION_IDLE = 12 * 3600, SESSION_MAX = 7 * 24 * 3600, LOCK_AFTER = 5, LOCK_BASE = 15 * 60, LOCK_MAX = 24 * 3600;
+export const SESSION_MAX = 15 * 24 * 3600, SESSION_IDLE = SESSION_MAX,   // stay signed in until you sign out, never longer than 15 days
+   LOCK_AFTER = 5, LOCK_BASE = 15 * 60, LOCK_MAX = 24 * 3600;
 const USER_ID_RE = /^[A-Za-z0-9_.-]{4,32}$/;
 const EMAIL_RE = /^[^@\s]{1,64}@[^@\s]{1,189}\.[^@\s.]{2,}$/;
 const NAME_RE = /^[\p{L}][\p{L}\p{N}_ .'\-]{1,79}$/u;

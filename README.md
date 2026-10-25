@@ -25,7 +25,7 @@ Python standard library.
 
 | You have | Do this | Time |
 |---|---|---|
-| **An Android phone** | Open the repository's [Releases](https://github.com/akash-8991/rea_marketwatch_app/releases) page on the phone, download `MarketLens-<version>-android.apk`, open it, allow the install, create an account. Standalone: no computer needed. Details: [docs/MOBILE.md](docs/MOBILE.md). | 2 min |
+| **An Android phone** | On the phone, tap **[Download MarketLens for Android](https://github.com/akash-8991/rea_marketwatch_app/raw/main/downloads/MarketLens-android.apk)** (a ready-built `.apk`, nothing to run), open the downloaded file, allow the install, create an account. Standalone: no computer needed. Details: [docs/MOBILE.md](docs/MOBILE.md). | 2 min |
 | **Docker** | `docker run -d --name marketlens -p 127.0.0.1:8080:8080 -v marketlens-data:/data ghcr.io/akash-8991/rea_marketwatch_app:latest`, then open <http://127.0.0.1:8080>. Or use [docker-compose.yml](docker-compose.yml). | 1 min |
 | **Python 3.9+** | `pip install marketlens-0.2.0-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
 | **An iPhone** | Not available yet; needs a Mac with Xcode to build. See [docs/MOBILE.md](docs/MOBILE.md), section 7. | |
@@ -150,8 +150,8 @@ local use.
 ## Accounts and what they do and do not protect
 - **Stored in `marketlens.db`** (SQLite, file readable by the owner only): user ID, name, email, date of birth, and a
   salted PBKDF2-SHA256 hash of the password (600,000 rounds). The password itself is never stored or logged.
-- **Sessions**: a random token in an `HttpOnly`, `SameSite=Strict` cookie; only its hash is stored. A session ends after
-  12 hours unused or 7 days in total, on sign-out, and on any credential change.
+- **Sessions**: a random token in an `HttpOnly`, `SameSite=Strict` cookie; only its hash is stored. You stay signed in, even
+  after closing the app, until you sign out; a session ends automatically 15 days after sign-in, on sign-out, and on any credential change.
 - **Abuse limits**: 5 failed attempts lock that user ID (sign-in) or email (recovery) for 15 minutes, doubling up to
   24 hours; sign-in and recovery endpoints also share a strict per-client rate limit. Failure messages never say which
   detail was wrong.

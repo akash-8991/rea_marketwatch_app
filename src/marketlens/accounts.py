@@ -23,8 +23,8 @@ import unicodedata
 from . import optiondb
 from .config import settings
 
-SESSION_IDLE = 12 * 3600          # a session ends after 12 h without use...
-SESSION_MAX = 7 * 24 * 3600       # ...and never lasts more than 7 days
+SESSION_MAX = 15 * 24 * 3600      # you stay signed in (even after closing the app) until you sign out, but never longer than 15 days
+SESSION_IDLE = SESSION_MAX        # no separate idle timeout
 LOCK_AFTER = 5                    # consecutive failures before a lockout
 LOCK_BASE = 15 * 60               # first lockout; doubles each time, up to LOCK_MAX
 LOCK_MAX = 24 * 3600

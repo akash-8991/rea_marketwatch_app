@@ -508,7 +508,13 @@ startVitals();
   $('#menu').addEventListener('click', () => { const open = $('#nav').dataset.open !== 'true'; $('#nav').dataset.open = open; $('#menu').setAttribute('aria-expanded', open); });
   if (window.MLUser) {
     $('#whoami').textContent = window.MLUser.name; $('#whoami').classList.remove('hide'); $('#logout').classList.remove('hide');
-    $('#logout').addEventListener('click', async () => { $('#logout').disabled = true; try { await api('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'MarketLens' }, body: '{}' }); } finally { location.hash = '#/'; location.reload(); } });
+    $('#logout').addEventListener('click', async () => { $('#logout').disabled = true; try { await api('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'MarketLens' }, body: '{}' }); } finally {
+      // A real navigation to the bare page (more reliable than reload() inside the Android WebView); if the page is somehow still
+      // alive a moment later, show the sign-in form directly.
+      location.hash = '';
+      location.replace(location.pathname + location.search);
+      setTimeout(() => import('./auth.js').then((m) => m.mountAuth(document.getElementById('app'), { usersExist: true })), 500);
+    } });
   }
   onConn(() => paintBanner());
   setInterval(paintBanner, 30000);

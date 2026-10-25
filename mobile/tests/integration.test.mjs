@@ -202,3 +202,18 @@ test('accounts keep each user separate: a second account sees its own session on
   assert.equal((await get(e, '/api/auth/me', b)).body.user.userId, 'ben.ray');
   assert.notEqual((await get(e, '/api/auth/me', a)).body.user.uid, (await get(e, '/api/auth/me', b)).body.user.uid);
 });
+
+test('sessions last 15 days regardless of use, then end; sign-out ends them at once', async () => {
+  let t = 1_800_000_000_000;
+  const e = createEngine({ storage: new MemoryStorage(), now: () => t, fetchFn: fakeNet().fetchFn, settings: { pbkdf2Iterations: 1000, nseDelayMs: 0, feedDelayMs: 0 } });
+  const token = (await post(e, '/api/auth/signup', ACCT)).setToken;
+  const day = 24 * 3600 * 1000;
+  t += 14 * day; assert.equal((await get(e, '/api/auth/me', token)).status, 200);        // app was closed for two weeks
+  t += day - 3600 * 1000 * 2; assert.equal((await get(e, '/api/auth/me', token)).status, 200);
+  t += 3 * 3600 * 1000; assert.equal((await get(e, '/api/auth/me', token)).status, 401); // past 15 days
+  const t2 = (await post(e, '/api/auth/login', { userId: ACCT.userId, password: ACCT.password })).setToken;
+  assert.equal((await get(e, '/api/auth/me', t2)).status, 200);
+  await post(e, '/api/auth/logout', {}, t2);
+  assert.equal((await get(e, '/api/auth/me', t2)).status, 401);
+  assert.deepEqual((await get(e, '/api/auth/status', t2)).body.signedIn, false);
+});

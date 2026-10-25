@@ -9,9 +9,9 @@ has been checked is listed in section 8; please report anything that breaks.
 ## 1. Install on Android (sideloading)
 Android 7.0 or newer.
 
-1. On your phone, open this repository's **Releases** page and download `MarketLens-<version>-android.apk` and its
-   `.sha256` file. (Or, from a build run, download the **MarketLens-android** artifact.)
-2. Optional but recommended, check the download on a computer: `shasum -a 256 -c MarketLens-<version>-android.apk.sha256`.
+1. On your phone, open [this direct link](https://github.com/akash-8991/rea_marketwatch_app/raw/main/downloads/MarketLens-android.apk) in your browser (it downloads `MarketLens-android.apk`; the checksum
+   is next to it as `MarketLens-android.apk.sha256`). Older versions are on the **Releases** page.
+2. Optional but recommended, check the download on a computer: `cd downloads && shasum -a 256 -c MarketLens-android.apk.sha256`.
 3. Open the `.apk`. Android asks to allow installs from this source (your browser or file manager). Allow it for this
    one install, then turn it off again in Settings.
 4. Google Play Protect may warn that the app is from an unknown developer. That is expected: the app is not on the Play

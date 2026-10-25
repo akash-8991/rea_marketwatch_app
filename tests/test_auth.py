@@ -208,21 +208,21 @@ class Recovery(Fresh):
 
 
 class Sessions(Fresh):
-    def test_lifecycle_expiry_and_sliding_window(self):
+    def test_stays_signed_in_for_15_days_then_ends(self):
         pk = self.make()[0]
         token = accounts.create_session(pk)
         self.assertEqual(accounts.user_for_token(token)["userId"], "asha_v")
         self.assertNotIn(token, optiondb._db().execute("SELECT group_concat(token_hash) FROM sessions").fetchone()[0])   # only a hash is stored
-        self.clock.t += 11 * 3600
-        self.assertIsNotNone(accounts.user_for_token(token))                              # use slides the idle window
-        self.clock.t += 11 * 3600
+        self.clock.t += 14 * 24 * 3600                                                      # app closed for two weeks: still signed in
         self.assertIsNotNone(accounts.user_for_token(token))
-        self.clock.t += 13 * 3600                                                           # idle for more than 12 h
+        self.clock.t += 23 * 3600                                                           # 14 days 23 h
+        self.assertIsNotNone(accounts.user_for_token(token))
+        self.clock.t += 2 * 3600                                                            # past 15 days, even though it was just used
         self.assertIsNone(accounts.user_for_token(token))
 
-    def test_absolute_lifetime(self):
+    def test_use_does_not_extend_beyond_15_days(self):
         token = accounts.create_session(self.make()[0])
-        for _ in range(16):                                                                 # keep it busy for 8 days
+        for _ in range(31):                                                                 # keep it busy for 15.5 days (12 h steps)
             self.clock.t += 12 * 3600
             accounts.user_for_token(token)
         self.assertIsNone(accounts.user_for_token(token))

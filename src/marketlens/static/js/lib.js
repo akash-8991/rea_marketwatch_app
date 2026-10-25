@@ -52,6 +52,9 @@ export async function api(path, { method = 'GET', headers, body, timeoutMs = 100
         const r = await fetch(path, { method, headers, body, signal: ctl.signal });
         const data = await r.json().catch(() => ({}));
         if (r.ok) { setConn({ state: 'ok', lastOkAt: Date.now(), lastError: '' }); return data; }
+        if (r.status === 401 && !path.startsWith('/api/auth/') && !window.__signedOut) {   // session ended (signed out elsewhere, or the 15-day limit): show sign-in
+          window.__signedOut = true; location.replace(location.pathname + location.search);
+        }
         const transient = [429, 502, 503, 504].includes(r.status);
         if (transient && attempt < maxRetries) {
           const wait = Number(r.headers.get('Retry-After')) * 1000 || 0;
