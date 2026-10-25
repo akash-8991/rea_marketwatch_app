@@ -118,6 +118,9 @@ label { color: var(--text-2); font-size: var(--fs-sm); }
 /* A cell that carries up/down must beat the table's own text colour (".tbl td" is more specific than ".up"). */
 .tbl td.up, .tbl th.up { color: var(--up); } .tbl td.down, .tbl th.down { color: var(--down); }
 .tbl.kv td:first-child { color: var(--text-muted); }
+.tbl td.co { max-width: 15rem; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+.tbl.peers tr.me td { background: var(--surface-2); font-weight: 600; }
+.company { margin: 0 0 var(--space-2); color: var(--text-2); }
 /* Table text never wraps; tables scroll sideways inside their .scroll box instead (added automatically, see autoScrollTables). */
 .tbl th, .tbl td { white-space: nowrap; }
 .tbl .headline { display: inline-block; max-width: 26rem; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }

@@ -55,11 +55,14 @@ def main(argv=None):
         return 0 if v["ok"] else 1
     from . import server  # imported after configuration so paths pick up the data dir
     httpd = server.make_server()
+    from . import securities
+    securities.start_background()   # loads the saved stock list and refreshes it from the official download when it is a week old
     url = f"http://{config.settings.host}:{config.settings.port}/"
     print(f"MarketLens {__version__} running at {url}")
     print(f"  data folder : {config.settings.data_dir}")
     print(f"  NSE data    : {'offline (saved snapshots only)' if config.settings.offline else 'live, fetched on demand and cached'}")
     print(f"  news        : {'off' if not config.settings.news else 'Yahoo Finance + Google News RSS'}")
+    print(f"  stock list  : NSE Nifty Total Market constituents ({len(securities.ROWS)} stocks), refreshed weekly unless offline")
     print(f"  accounts    : {'sign-in required (--no-login to turn off)' if config.settings.require_login else 'off (--no-login): anyone who can open the page can use it'}")
     print(f"  option chain: inbox {config.inbox_dir()} scanned every {config.settings.option_interval}s; "
           f"{'endpoint configured' if config.settings.fo_url else 'no MCP endpoint (see --fo-mcp-url)'}")

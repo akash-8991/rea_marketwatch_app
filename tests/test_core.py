@@ -209,7 +209,7 @@ class MarketTests(TempData):
         store.disk_put("bootstrap", {"asOf": "2026-10-23", "stocks": [
             {"sym": "RELIANCE", "price": 1190.0, "prev": 1184.5}, {"sym": "RELINFRA", "price": 100.0, "prev": 99.0}, {"sym": "TCS", "price": 2530.0, "prev": 2506.9}]})
         r = market.search("rel")
-        self.assertEqual([x["symbol"] for x in r["results"]], ["RELIANCE", "RELINFRA"])
+        self.assertEqual([x["symbol"] for x in r["results"]][:2], ["RELIANCE", "RELINFRA"])   # saved matches first; company-name matches from the list follow
         self.assertIn("offline", r["note"])
         self.assertEqual(r["source"], "local")
 
@@ -246,7 +246,7 @@ if __name__ == "__main__":
 
 
 class SectorList(unittest.TestCase):
-    """Sectors come from NSE's Nifty Total Market constituents list shipped in data/sectors.csv."""
+    """Sectors come from NSE's Nifty Total Market constituents list shipped in data/ind_niftytotalmarket_list.csv."""
 
     def test_list_is_loaded_with_nse_industry_names(self):
         from marketlens import market
@@ -264,9 +264,10 @@ class SectorList(unittest.TestCase):
         for sector in analysis.SECTOR_INDEX:
             self.assertIn(sector, industries)
 
-    def test_phone_app_uses_the_same_list(self):
-        import json, os, re, subprocess
-        from marketlens import market
+    def test_phone_app_starts_from_the_same_list(self):
+        import json, os, re
+        from marketlens import securities
         js = open(os.path.join(os.path.dirname(__file__), "..", "mobile", "engine", "sectors.js"), encoding="utf-8").read()
-        mapping = json.loads(re.search(r"SECTOR_MAP = (\{.*?\});\n", js, re.S).group(1))
-        self.assertEqual(mapping, market.SECTOR_MAP, "run: PYTHONPATH=src python3 mobile/scripts/gen-sectors.py > mobile/engine/sectors.js")
+        mapping = json.loads(re.search(r"SECURITIES = (\{.*?\});\n", js, re.S).group(1))
+        want = {s: [r["industry"], r["company"]] for s, r in securities.ROWS.items()}
+        self.assertEqual(mapping, want, "run: PYTHONPATH=src python3 mobile/scripts/gen-sectors.py > mobile/engine/sectors.js")

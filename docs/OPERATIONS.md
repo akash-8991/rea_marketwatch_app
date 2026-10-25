@@ -16,6 +16,7 @@ Environment variables: `NSE_CM_MCP_URL`, `NSE_BHAVCOPY_MCP_URL`, `NSE_FO_MCP_URL
 | `GET /readyz` | **Readiness**: data folder writable, SQLite opens, and a saved snapshot exists or NSE is reachable. `503` otherwise. |
 | `GET /api/metrics` | Per-route request counts by status class, latency p50/p95/p99/max (last 2,000 requests per route), in-flight gauge, counters (`rate_limited`, `load_shed`, `internal_errors`, `connections_refused`), web vitals from real page loads, **data age** per dataset, NSE breaker state, scheduler state. Labels are route templates, never raw paths or IDs. |
 | `GET /api/audit?limit=N` | Recent audit entries and whether the hash chain verifies. |
+| `GET /api/peers/<SYMBOL>` | peer comparison for one stock (same industry, most traded); about 11 NSE calls, cached a minute |
 | `GET /api/config` | Version, flags, the rating thresholds, the active rate limits. |
 
 ## Provisional service objectives (local loopback, validate before relying on them)
@@ -53,6 +54,7 @@ Schema v2 fields: `id`, `uid` (random event id), `ts` (UTC), `event`, `actor`, `
 | `rate_limited`, `load_shed` | at most one row per class per minute, outcome `denied` |
 | `upstream_blocked` | NSE refused us (401/403/429); NSE traffic paused 15 min |
 | `startup` | process start with non-secret settings |
+| `securities_updated`, `securities_update_failed` | the weekly refresh of the stock list (how many stocks, added, removed, industry changes), or why the saved list was kept |
 Not logged here: high-frequency telemetry (that is `/api/metrics`), authentication (there is none).
 Retention: audit rows are never deleted by the app; snapshots keep the newest 300 per symbol and expiry.
 Failure behaviour: if the audit write for an import fails, the import rolls back and the user sees an error; for other

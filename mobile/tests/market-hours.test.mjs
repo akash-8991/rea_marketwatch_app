@@ -65,7 +65,7 @@ function market({ price, day, hang = false }) {
   return s;
 }
 const mk = (srv, clock, storage = new MemoryStorage()) => createEngine({ storage, fetchFn: srv.fetch, optionSource: { fetchLatest: async () => parseBhavcopy(readFileSync(new URL('./fixtures/bhavcopy-sample.csv', import.meta.url), 'utf8')) },
-  now: () => clock.t, settings: { cmUrl: CM, bhavcopyUrl: BH, requireLogin: false, universeSize: 4, nseDelayMs: 0, feedDelayMs: 0 } });
+  now: () => clock.t, settings: { cmUrl: CM, bhavcopyUrl: BH, requireLogin: false, universeSize: 4, refreshList: false, nseDelayMs: 0, feedDelayMs: 0 } });
 const get = (e, p) => e.handle('GET', p).then((r) => r.body);
 const settle = async (e) => { for (let i = 0; i < 200; i++) { if (!(await get(e, '/api/bootstrap')).refreshing) break; await new Promise((r) => setTimeout(r, 5)); } };
 

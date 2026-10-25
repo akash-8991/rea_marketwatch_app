@@ -1,5 +1,5 @@
 /* MarketLens app (ES module): hash-routed single page. Data: NSE via the local server. See data.js, lib.js, screener.js. */
-import { startVitals, autoScrollTables, tint, sgn, $, $$, esc, money, signed, cls, arrow, chgPct, pos52, idxChange, fmtDate, symLink, secTag, store, api, conn, onConn, badge, toneKind, sparkline, skeleton, emptyState, errorState, safeUrl, icon } from './lib.js';
+import { startVitals, autoScrollTables, tint, sgn, compact, $, $$, esc, money, signed, cls, arrow, chgPct, pos52, idxChange, fmtDate, symLink, secTag, store, api, conn, onConn, badge, toneKind, sparkline, skeleton, emptyState, errorState, safeUrl, icon } from './lib.js';
 
 const D = window.MLData;
 const { stocks, bySym } = D;
@@ -375,6 +375,24 @@ startVitals();
     }).catch((e) => { const box = $('#qnews'); if (box) box.innerHTML = `<h2>News and sentiment</h2><p>Could not load headlines right now.</p><p class="muted">${esc(e.message)}</p>`; });
   }
 
+  /* ---------- peer comparison: the same industry's most-traded stocks (industry list from NSE's Nifty Total Market constituents) ---------- */
+  function loadPeers(sym) {
+    api(`/api/peers/${encodeURIComponent(sym)}`, { quiet: true, retries: 1 }).then((p) => {
+      const box = $('#qpeers'); if (!box || location.hash.indexOf(`/quote/${encodeURIComponent(sym)}`) < 0) return;
+      if (!p.industry) { box.innerHTML = '<h2>Peers</h2><p class="muted">This stock is not in NSE’s Nifty Total Market list, so it has no peer group.</p>'; return; }
+      const chgs = p.peers.map((x) => x.chg).filter((v) => v != null).sort((a, b) => a - b);
+      const med = chgs.length ? (chgs.length % 2 ? chgs[(chgs.length - 1) / 2] : (chgs[chgs.length / 2 - 1] + chgs[chgs.length / 2]) / 2) : null;
+      const row = (x, me) => `<tr class="${me ? 'me' : ''}"><td><a href="#/quote/${encodeURIComponent(x.sym)}">${esc(x.sym)}</a></td><td class="co" title="${esc(x.name)}">${esc(x.name)}</td>
+        <td class="num">${x.price == null ? '—' : money(x.price)}</td><td class="num ${x.chg == null ? '' : cls(x.chg)}">${x.chg == null ? '—' : `${arrow(x.chg)} ${Math.abs(x.chg).toFixed(2)}%`}</td>
+        <td class="num">${x.volume == null ? '—' : compact(x.volume)}</td><td class="num">${x.valueCr == null ? '—' : money(x.valueCr, 0)}</td></tr>`;
+      box.innerHTML = `<h2>Peers · ${esc(p.industry)}</h2>
+        <p class="muted">${p.count} stocks in this industry${p.rank ? `; ${esc(sym)} ranks ${p.rank} by last session’s turnover` : ''}. Showing the ${p.peers.length} most traded.${p.stale ? ' Prices are from saved data.' : ''}</p>
+        ${p.self && p.self.chg != null && med != null ? `<p>${esc(sym)} <span class="${cls(p.self.chg)}">${signed(p.self.chg)}%</span> vs peer median <span class="${cls(med)}">${signed(med)}%</span> today.</p>` : ''}
+        <table class="tbl peers"><thead><tr><th>Stock</th><th>Company</th><th class="num">Price</th><th class="num">Change</th><th class="num">Volume</th><th class="num">Turnover ₹ cr</th></tr></thead>
+        <tbody>${p.self ? row(p.self, true) : ''}${p.peers.map((x) => row(x, false)).join('')}</tbody></table>`;
+    }).catch(() => { const box = $('#qpeers'); if (box) box.innerHTML = '<h2>Peers</h2><p class="muted">Could not load the peer comparison right now.</p>'; });
+  }
+
   function renderQuote(d, tab) {
     const q = d.quote, sym = d.sym, u = bySym[sym];
     const price = q.lastTradedPrice, c = q.perChange ?? (q.preClosePrice ? ((price - q.preClosePrice) / q.preClosePrice) * 100 : 0);
@@ -390,10 +408,8 @@ startVitals();
         ['Volume', q.volume?.toLocaleString('en-IN')], ['Turnover', q.value != null ? `₹${money(q.value, 0)} cr` : '—'], ['30-day change', q.perChange30d == null ? '—' : `<span class="${cls(q.perChange30d)}">${signed(q.perChange30d)}%</span>`],
         ['52-week high', `${money(q.fiftyTwoWeekHigh)}${r52['52w_high_date'] ? ` (${fmtDate(r52['52w_high_date'])})` : ''}`], ['52-week low', `${money(q.fiftyTwoWeekLow)}${r52['52w_low_date'] ? ` (${fmtDate(r52['52w_low_date'])})` : ''}`],
         ['Position in 52w range', r52.position_in_range_pct != null ? `${r52.position_in_range_pct}%` : '—'], ['Dividends, last 12 months', d.divTtm ? `₹${money(d.divTtm)}${yld ? ` (${yld}% yield)` : ''}` : 'None found']];
-      const peers = stocks.filter((p) => p.sector === (u && u.sector) && p.sym !== sym && p.sector !== 'Other').slice(0, 5);
-      body = `<div class="grid2"><section class="card"><h2>Key statistics</h2><table class="tbl kv"><tbody>${rows.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v ?? '—'}</td></tr>`).join('')}</tbody></table>
-        <p class="muted">NSE does not provide P/E, market cap or financial statements, so they are not shown.</p></section>
-        <section class="card"><h2>${peers.length ? `Peers · ${esc(u.sector)}` : 'Peers'}</h2><table class="tbl"><tbody>${peers.map((p) => `<tr><td>${symLink(p)}</td><td class="num" data-px="${p.sym}"></td><td class="num" data-chg="${p.sym}"></td></tr>`).join('') || '<tr><td class="muted">No classified peers among the most-traded stocks.</td></tr>'}</tbody></table></section></div>`;
+      body = `<div class="grid2"><section class="card"><h2>Key statistics</h2><table class="tbl kv"><tbody>${rows.map(([k, v]) => `<tr><td>${k}</td><td class="num">${v ?? '—'}</td></tr>`).join('')}</tbody></table></section>
+        <section class="card" id="qpeers"><h2>Peers</h2><p class="muted">Loading peer comparison…</p></section></div>`;
     } else if (tab === 'actions') {
       const acts = [...((d.actions && d.actions.actions) || [])].sort((a, b) => b.exDate.localeCompare(a.exDate));
       body = `<section class="card"><h2>Corporate actions (last 3 years)</h2>${acts.length ? `<table class="tbl"><thead><tr><th>Ex-date</th><th>Type</th><th>Details</th></tr></thead><tbody>
@@ -409,9 +425,10 @@ startVitals();
         <p class="muted">Rule-based trend and momentum indicators. Not a prediction.</p></section>
         <section class="card"><h2>Fundamental view</h2>${F && F.score != null ? `<p>${badge(F.label, '', toneKind(F.label))} <span class="muted">score ${F.score}</span></p><table class="tbl"><tbody>${sigRows(F.signals)}</tbody></table>
         <table class="tbl kv"><tbody><tr><td>Dividend yield (TTM)</td><td class="num">${F.yield != null ? F.yield + '%' : '—'}</td></tr><tr><td>Sector index P/E · P/B</td><td class="num">${F.sectorPE ?? '—'} · ${F.sectorPB ?? '—'}</td></tr><tr><td>Sector index dividend yield</td><td class="num">${F.sectorYield != null ? F.sectorYield + '%' : '—'}</td></tr></tbody></table>` : '<p class="muted">Corporate-action data is not available yet.</p>'}
-        <p class="muted">${esc((F && F.basis) || 'Based on NSE dividends and corporate actions.')}. NSE does not publish this stock’s P/E, earnings, debt or growth, so this is not a full fundamental analysis.</p></section></div>`;
+        <p class="muted">${esc((F && F.basis) || 'Based on NSE dividends and corporate actions')}.</p></section></div>`;
     }
-    $('#qwrap').innerHTML = `<header class="qhead"><div><h1>${esc(sym)} <small class="muted">${u && u.sector !== 'Other' ? esc(u.sector) : 'NSE'}${q.series ? ` · ${esc(q.series)}` : ''}</small></h1>
+    $('#qwrap').innerHTML = `<header class="qhead"><div><h1>${esc(sym)} <small class="muted">${d.industry ? esc(d.industry) : u && u.sector !== 'Other' ? esc(u.sector) : 'NSE'}${q.series ? ` · ${esc(q.series)}` : ''}</small></h1>
+        ${d.company ? `<p class="company">${esc(d.company)}</p>` : ''}
         <div class="qprice"><span class="big">${money(price)}</span><span class="${cls(c)}">${arrow(c)} ${signed(q.change)} (${Math.abs(c).toFixed(2)}%)</span></div>
         <p class="muted">${esc(q.latestTimestamp || '')}${d.stale ? ' · saved snapshot' : ''}</p></div>
         <button id="wl-btn" class="btn ${inWl ? 'on' : ''}">${inWl ? '★ In watchlist' : '☆ Add to watchlist'}</button></header>
@@ -419,6 +436,7 @@ startVitals();
         <div id="chart" class="chart"></div>${h.length ? '' : '<p class="muted">No daily history returned for this symbol.</p>'}</section>
       <nav class="subtabs">${tabs.map((t) => `<a href="#/quote/${encodeURIComponent(sym)}/${t}" class="${t === tab ? 'on' : ''}">${tabName[t]}</a>`).join('')}</nav>${body}`;
     drawQuoteChart(); paintLive();
+    if (tab === 'overview') loadPeers(sym);
     if (tab === 'news') loadStockNews(sym);
     $$('#range button').forEach((b) => b.addEventListener('click', () => { quoteRange = b.dataset.r; $$('#range button').forEach((x) => x.classList.toggle('on', x === b)); drawQuoteChart(); }));
     $('#wl-btn').addEventListener('click', () => {
@@ -460,7 +478,7 @@ startVitals();
   function wireSearch() {
     const input = $('#q'), box = $('#suggest'); let timer = null, seq = 0;
     const show = (html) => { box.innerHTML = html; box.classList.remove('hide'); };
-    const item = (x) => `<a href="#/quote/${encodeURIComponent(x.symbol)}"><b>${esc(x.symbol)}</b> <span class="muted">${x.last_close != null ? money(x.last_close) : ''}${x.pct_change != null ? ` · <span class="${cls(x.pct_change)}">${signed(x.pct_change)}%</span>` : ''}${x.source === 'nse' ? ' · NSE' : ''}</span></a>`;
+    const item = (x) => `<a href="#/quote/${encodeURIComponent(x.symbol)}"><b>${esc(x.symbol)}</b> ${x.name ? `<span class="muted">${esc(x.name)}</span> ` : ''}<span class="muted">${x.last_close != null ? money(x.last_close) : ''}${x.pct_change != null ? ` · <span class="${cls(x.pct_change)}">${signed(x.pct_change)}%</span>` : ''}${x.source === 'nse' ? ' · NSE' : ''}</span></a>`;
     const goto = (sym) => { location.hash = `#/quote/${encodeURIComponent(sym)}`; input.value = ''; box.classList.add('hide'); };
     input.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;

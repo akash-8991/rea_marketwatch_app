@@ -53,7 +53,7 @@ function fakeNet({ flaky = true, blockWith = 0 } = {}) {
 }
 
 const NOFILE = { fetchLatest: async () => null };
-const make = (net, extra = {}) => createEngine({ storage: new MemoryStorage(), fetchFn: net.fetchFn, optionSource: NOFILE, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, nseDelayMs: 0, feedDelayMs: 0, ...extra } });
+const make = (net, extra = {}) => createEngine({ storage: new MemoryStorage(), fetchFn: net.fetchFn, optionSource: NOFILE, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, refreshList: false, nseDelayMs: 0, feedDelayMs: 0, ...extra } });
 const get = (e, p, token) => e.handle('GET', p, { token });
 const post = (e, p, body, token, headers = H) => e.handle('POST', p, { token, headers, body: typeof body === 'string' ? body : JSON.stringify(body) });
 const ACCT = { name: 'Asha Rao', email: 'asha@example.com', dob: '1990-04-02', userId: 'asha.rao', password: 'tulip-orbit-77x' };
@@ -130,7 +130,7 @@ test('bootstrap through a flaky MCP server (half the calls 404), then extras and
 
 test('NSE 403 opens the circuit breaker: later calls make no network request, saved snapshot is served as stale', async () => {
   const live = fakeNet(), storage = new MemoryStorage();
-  const mk = (net) => createEngine({ storage, fetchFn: net.fetchFn, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, nseDelayMs: 0, feedDelayMs: 0 } });
+  const mk = (net) => createEngine({ storage, fetchFn: net.fetchFn, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, refreshList: false, nseDelayMs: 0, feedDelayMs: 0 } });
   let e = mk(live);
   const t = await signedIn(e);
   assert.equal((await get(e, '/api/bootstrap', t)).body.stale, false);
@@ -212,7 +212,7 @@ test('accounts keep each user separate: a second account sees its own session on
 
 test('sessions last 15 days regardless of use, then end; sign-out ends them at once', async () => {
   let t = 1_800_000_000_000;
-  const e = createEngine({ storage: new MemoryStorage(), now: () => t, fetchFn: fakeNet().fetchFn, settings: { pbkdf2Iterations: 1000, nseDelayMs: 0, feedDelayMs: 0 } });
+  const e = createEngine({ storage: new MemoryStorage(), now: () => t, fetchFn: fakeNet().fetchFn, settings: { pbkdf2Iterations: 1000, refreshList: false, nseDelayMs: 0, feedDelayMs: 0 } });
   const token = (await post(e, '/api/auth/signup', ACCT)).setToken;
   const day = 24 * 3600 * 1000;
   t += 14 * day; assert.equal((await get(e, '/api/auth/me', token)).status, 200);        // app was closed for two weeks

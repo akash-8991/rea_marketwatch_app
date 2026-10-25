@@ -22,7 +22,7 @@ import uuid
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import accounts, analysis, market, news, nse, optiondb, options, ratelimit, scheduler, store
+from . import accounts, analysis, market, news, nse, optiondb, options, ratelimit, scheduler, securities, store
 from .config import settings
 from .metrics import metrics
 
@@ -83,7 +83,8 @@ def stock_payload(sym):
         if d is None:
             raise
         d = dict(d, stale=True, staleReason=str(e)[:200])
-    return dict(d, analysis=market.analyze_detail(d))
+    meta = securities.get(sym) or {}
+    return dict(d, analysis=market.analyze_detail(d), company=meta.get("company"), industry=meta.get("industry"))
 
 
 def config_payload():
@@ -124,6 +125,8 @@ def route_label(path):
     """Bounded-cardinality label for metrics: templates, never raw paths."""
     if path.startswith("/api/stock/"):
         return "/api/stock/:sym"
+    if path.startswith("/api/peers/"):
+        return "/api/peers/:sym"
     if path.startswith("/api/news/stock/"):
         return "/api/news/stock/:sym"
     if re.fullmatch(r"/api/news/(india|global)", path):
@@ -139,7 +142,7 @@ def classify(method, path):
         return None
     if method == "POST":
         return "auth" if path.startswith("/api/auth/") else "write"
-    if path.startswith(("/api/stock/", "/api/search", "/api/news/")) or path == "/api/options":
+    if path.startswith(("/api/stock/", "/api/peers/", "/api/search", "/api/news/")) or path == "/api/options":
         return "expensive"
     return "read" if path.startswith("/api/") else "static"
 
@@ -456,6 +459,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(stock_payload(sym))
         if p == "/api/search":
             return self._json(market.search(qs.get("q", [""])[0]))
+        m = re.match(r"^/api/peers/([^/]+)$", p)
+        if m:
+            sym = urllib.parse.unquote(m.group(1)).upper()
+            if not market.SYMBOL_RE.match(sym):
+                return self._error(400, "bad symbol")
+            return self._json(market.peers(sym))
         m = re.match(r"^/api/news/(india|global)$", p)
         if m:
             return self._json(news.region_news(m.group(1)))

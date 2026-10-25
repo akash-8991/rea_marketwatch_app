@@ -12,7 +12,8 @@ import { OptionFeed } from './optionfeed.js';
 import { inSessionHours, lastSessionDate, marketState } from './marketclock.js';
 import { summarize } from './options.js';
 import { migrate } from './migrations.js';
-import { SECTOR_MAP, SECTOR_INDICES } from './sectors.js';
+import { SECTOR_INDICES } from './sectors.js';
+import { Securities } from './securities.js';
 
 export const VERSION = '0.3.0-mobile';
 const MAX_UPLOAD = 2_000_000;
@@ -29,10 +30,14 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
   const accounts = new Accounts(storage, opts, { iterations: cfg.pbkdf2Iterations, now: () => now() / 1000 });
   const nse = new NseClient({ storage, cmUrl: cfg.cmUrl, bhavcopyUrl: cfg.bhavcopyUrl, offline: cfg.offline, fetchFn, now: () => now() / 1000, delayMs: cfg.nseDelayMs ?? 150, timeoutMs: cfg.nseTimeoutMs ?? 20000,
     onBlocked: (code) => opts.safeAudit('upstream_blocked', 'nse', `NSE MCP returned HTTP ${code}; all NSE traffic paused for 15 min`, { outcome: 'error', channel: 'system' }) });
-  const market = new Market({ nse, snaps, cache, settings: cfg, now: () => new Date(now()) });
+  const securities = new Securities({ storage, now, fetchText: async (url) => { const r = await fetchFn(url, { headers: { Accept: 'text/csv' } }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); },
+    audit: (event, detail, outcome) => opts.safeAudit(event, 'system', detail, { outcome, channel: 'system' }) });
+  const market = new Market({ nse, snaps, cache, securities, settings: cfg, now: () => new Date(now()) });
   const news = new News({ cache, snaps, fetchFn, enabled: cfg.news, delayMs: cfg.feedDelayMs ?? 200, now: () => new Date(now()) });
   const feed = new OptionFeed({ source: optionSource || new BhavcopySource({ now }), store: opts, now });
   const ready = migrate(storage, { migrations: settings.migrations, current: settings.schemaVersion }).then(() => null, (e) => e);   // data upgrade runs before the first request is served
+  if (!cfg.offline && settings.refreshList !== false) ready.then((bad) => { if (!bad) securities.load().then(() => securities.refresh()).catch(() => {}); });   // the saved list first, then a weekly refresh in the background
+  else ready.then((bad) => { if (!bad) securities.load().catch(() => {}); });
   const started = now();
   let bootRefresh = null;   // the one background refresh in flight
 
@@ -94,7 +99,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
     if (market.live.job.state === 'running') boot.refreshing = true;
     const seen = market.live.received ? market.liveSeen() : { received: 0, newest: boot.stocks.reduce((m, x) => ((x.ts || '') > m ? x.ts : m), '') };
     boot.market = marketState(now(), seen);
-    boot.stocks = boot.stocks.map((s) => ({ ...s, sector: SECTOR_MAP[s.sym] || 'Other', techSnap: analysis.technicalSnapshot(s) }));   // classification applied at serve time, so saved snapshots follow the current list
+    boot.stocks = boot.stocks.map((s) => ({ ...s, sector: securities.sector(s.sym), techSnap: analysis.technicalSnapshot(s) }));   // classification applied at serve time, so saved snapshots follow the current list
     return boot;
   }
 
@@ -112,7 +117,8 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
       if (!d) throw e;
       d = { ...d, stale: true, staleReason: String(e.message).slice(0, 200) };
     }
-    return { ...d, analysis: await market.analyzeDetail(d) };
+    const meta = securities.get(sym) || {};
+    return { ...d, analysis: await market.analyzeDetail(d), company: meta.company || null, industry: meta.industry || null };
   }
 
   const optionsStatus = () => ({ configured: true, auto: true, source: 'NSE end-of-day derivatives file' });
@@ -204,6 +210,8 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
       let m = /^\/api\/stock\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await stockPayload(sym)) : err(400, 'bad symbol'); }
       if (p === '/api/search') return json(await market.search(qs.get('q') || ''));
+      m = /^\/api\/peers\/([^/]+)$/.exec(p);
+      if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.peers(sym)) : err(400, 'bad symbol'); }
       m = /^\/api\/news\/(india|global)$/.exec(p);
       if (m) return json(await news.regionNews(m[1]));
       m = /^\/api\/news\/stock\/([^/]+)$/.exec(p);
@@ -222,5 +230,5 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
     }
   }
 
-  return { handle, feed, nse, market, news, accounts, opts, snaps, cache, storage, cfg };
+  return { handle, feed, securities, nse, market, news, accounts, opts, snaps, cache, storage, cfg };
 }

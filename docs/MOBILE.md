@@ -66,7 +66,7 @@ option contracts themselves cannot be live. This is stated on the screen. Live p
 live call), made two at a time, so they arrive over a few seconds with the most-traded stocks first.
 
 ## 2d. Reading the screens
-- **Sectors** follow NSE's Nifty Total Market list (about 750 stocks in 22 industries); other stocks show as "Other". The only disclaimer in the app
+- **Sectors, company names and peers** follow NSE's Nifty Total Market list (about 750 stocks in 22 industries), stored in the app and refreshed once a week from the official download (the copy bundled in the app is the fallback); other stocks show as "Other". A stock's page shows its company and industry and compares it with the 10 most-traded stocks of that industry; search also finds stocks by company name. The only disclaimer in the app
   is the one-line educational notice at the bottom of every screen.
 - **Green and red:** every increase is green and every decrease red (prices, changes, 30-day moves, change in open interest,
   score signs, and the figures in generated market updates), including the Change columns of the stock tables on Home, Markets and the Watchlist. Signed values also carry a "+" or "−", so colour is never the only cue.

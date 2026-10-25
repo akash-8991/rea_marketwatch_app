@@ -1,23 +1,14 @@
 """NSE market data assembly: universe snapshot, per-stock detail, background extras, symbol search."""
-import csv
 import datetime
-import os
 import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from . import analysis, nse, store
+from . import analysis, nse, securities, store
 from .config import settings
 
-def _load_sectors():
-    """Symbol -> industry from NSE's Nifty Total Market constituents list (data/sectors.csv, the same file the phone app is generated from)."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "sectors.csv")
-    with open(path, newline="", encoding="utf-8") as f:
-        return {r["Symbol"]: r["Industry"] for r in csv.DictReader(f)}
-
-
-SECTOR_MAP = _load_sectors()   # about 750 stocks; anything not in the list is "Other"
+SECTOR_MAP = securities.SECTOR_MAP   # symbol -> industry, from NSE's Nifty Total Market list; the same dict is updated in place when the list is refreshed
 SECTOR_INDICES = [  # sector-level index performance for the heat map: (industry in the list above, NSE index that tracks it)
     ("Financial Services", "NIFTY FINANCIAL SERVICES"), ("Information Technology", "NIFTY IT"), ("Automobile and Auto Components", "NIFTY AUTO"),
     ("Healthcare", "NIFTY HEALTHCARE INDEX"), ("Fast Moving Consumer Goods", "NIFTY FMCG"), ("Metals & Mining", "NIFTY METAL"),
@@ -238,12 +229,15 @@ def known_symbols():
 
 def search(q):
     """Local matches first; NSE's symbol search is merged in when reachable. Never discards local matches."""
-    q = (q or "").strip().upper()
+    raw = (q or "").strip()
+    q = raw.upper()
     if not q or not SYMBOL_RE.match(q.replace(" ", "")):
         return {"results": [], "source": "none", "note": ""}
     local = [v for k, v in known_symbols().items() if q in k]
     local.sort(key=lambda v: (not v["symbol"].startswith(q), v["symbol"]))
     results = [dict(v, source="local") for v in local[:10]]
+    seen_names = {r["symbol"] for r in results}
+    results += [dict(symbol=h["symbol"], name=h["name"], last_close=None, pct_change=None, last_date=None, source="list") for h in securities.search_names(raw) if h["symbol"] not in seen_names][:6]
     note = ""
     if nse.available():
         try:
@@ -255,3 +249,54 @@ def search(q):
     else:
         note = "NSE search is paused" + (" (offline mode)" if settings.offline else f" (retry in about {max(1, nse.retry_in_seconds() // 60)} min)") + "; showing matches from saved data."
     return {"results": results, "source": "nse+local" if note == "" else "local", "note": note}
+
+
+# ---------- peers: other stocks of the same industry (from the Nifty Total Market list) ----------
+def _rank_industry(members):
+    """Members of one industry ordered by last session's traded value (close x volume) from NSE's bulk quote: three calls at most."""
+    quotes = []
+    for i in range(0, len(members), 50):
+        quotes += nse.bh("get_bulk_quote", {"symbols": members[i:i + 50]}).get("quotes", [])
+    quotes = [q for q in quotes if q.get("close") and q.get("volume")]
+    quotes.sort(key=lambda q: q["close"] * q["volume"], reverse=True)
+    return [q["symbol"] for q in quotes]
+
+
+def _live_row(sym):
+    q = (store.cached("lq:" + sym, 60, lambda: nse.cm("cm_get_stock_quote", {"symbol": sym})) or {}).get("stock") or {}
+    price, prev = q.get("lastTradedPrice"), q.get("preClosePrice")
+    chg = q.get("perChange") if q.get("perChange") is not None else (round((price - prev) / prev * 100, 2) if price and prev else None)
+    return {"price": price, "prev": prev, "chg": chg, "volume": q.get("volume"), "valueCr": q.get("value"), "ts": q.get("latestTimestamp")}
+
+
+def peers(sym, limit=10):
+    """Peer comparison for one stock: the same industry's most-traded stocks with price, change, volume and turnover. Prices are NSE's
+    live quotes (the last close when the market is shut). If NSE cannot be reached the names still show, with saved prices where we have them."""
+    row = securities.get(sym)
+    if not row:
+        return {"sym": sym, "company": None, "industry": None, "count": 0, "peers": [], "self": None}
+    members = securities.industry_members(row["industry"])
+    out = {"sym": sym, "company": row["company"], "industry": row["industry"], "count": len(members), "peers": [], "self": None, "stale": False}
+    try:
+        ranked = store.cached("peers-rank:" + row["industry"], 1800, lambda: _rank_industry(members))
+    except Exception:
+        ranked = [m for m in sorted(members)]
+        out["stale"] = True
+    top = [m for m in ranked if m != sym][:limit]
+    saved = {x["sym"]: x for x in (store.disk_get("bootstrap") or {}).get("stocks", [])}
+
+    def one(s):
+        try:
+            r = _live_row(s)
+        except Exception:
+            x = saved.get(s) or {}
+            out["stale"] = True
+            r = {"price": x.get("price"), "prev": x.get("prev"), "chg": round((x["price"] - x["prev"]) / x["prev"] * 100, 2) if x.get("price") and x.get("prev") else None,
+                 "volume": x.get("volume"), "valueCr": x.get("valueCr"), "ts": x.get("ts")}
+        meta = securities.get(s) or {}
+        return dict(r, sym=s, name=meta.get("company", s))
+    with ThreadPoolExecutor(max_workers=nse.MAX_WORKERS) as ex:
+        rows = list(ex.map(one, top + [sym]))
+    out["peers"], out["self"] = rows[:-1], rows[-1]
+    out["rank"] = (ranked.index(sym) + 1) if sym in ranked else None
+    return out

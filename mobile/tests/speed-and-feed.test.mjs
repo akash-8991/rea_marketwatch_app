@@ -74,7 +74,7 @@ function fakeSource(opts = {}) {
 }
 async function engineWith(source, extra = {}) {
   const t0 = Date.parse('2026-10-26T14:30:00Z'); let clock = t0;
-  const e = createEngine({ storage: extra.storage || new MemoryStorage(), optionSource: source, now: () => clock, fetchFn: async () => new Response('', { status: 500 }), settings: { pbkdf2Iterations: 1000, nseDelayMs: 0, feedDelayMs: 0 } });
+  const e = createEngine({ storage: extra.storage || new MemoryStorage(), optionSource: source, now: () => clock, fetchFn: async () => new Response('', { status: 500 }), settings: { pbkdf2Iterations: 1000, refreshList: false, nseDelayMs: 0, feedDelayMs: 0 } });
   const token = (await e.handle('POST', '/api/auth/signup', { headers: H, body: JSON.stringify(ACCT) })).setToken;
   return { e, token, tick: (ms) => { clock += ms; } };
 }
@@ -156,7 +156,7 @@ function tool(name, a) {
     default: throw new Error('unexpected tool ' + name);
   }
 }
-const engineOn = (srv, extra = {}) => createEngine({ storage: extra.storage || new MemoryStorage(), fetchFn: srv.fetch, settings: { cmUrl: MCP, bhavcopyUrl: MCP, requireLogin: false, universeSize: 50, nseDelayMs: 0, feedDelayMs: 0, nseTimeoutMs: 100 } });
+const engineOn = (srv, extra = {}) => createEngine({ storage: extra.storage || new MemoryStorage(), fetchFn: srv.fetch, settings: { cmUrl: MCP, bhavcopyUrl: MCP, requireLogin: false, universeSize: 50, refreshList: false, nseDelayMs: 0, feedDelayMs: 0, nseTimeoutMs: 100 } });
 
 test('first run: the whole home page costs 6 tool calls (one bulk quote for 50 stocks), not one per stock', async () => {
   const srv = mcpServer({ missRate: 0.6 }), e = engineOn(srv);

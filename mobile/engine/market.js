@@ -1,8 +1,6 @@
 /* NSE market data assembly: universe snapshot, per-stock detail, background extras, symbol search. Port of market.py. */
 import * as analysis from './analysis.js';
-import { SECTOR_MAP, SECTOR_INDICES } from './sectors.js';
-
-export { SECTOR_MAP };
+import { SECTOR_INDICES } from './sectors.js';
 export const HEADLINE_INDICES = ['NIFTY 50', 'NIFTY BANK', 'NIFTY NEXT 50', 'NIFTY MIDCAP 100'];
 export const SYMBOL_RE = /^[A-Za-z0-9&_-]{1,24}$/;
 const DIV_RE = /(?:Rs\.?|Re\.?|INR)\s*([0-9]+(?:\.[0-9]+)?)/i;
@@ -28,8 +26,8 @@ export function ttmDividend(actions, today = new Date()) {
 }
 
 export class Market {
-  constructor({ nse, snaps, cache, settings = {}, now = () => new Date() }) {
-    Object.assign(this, { nse, snaps, cache, now });
+  constructor({ nse, snaps, cache, securities, settings = {}, now = () => new Date() }) {
+    Object.assign(this, { nse, snaps, cache, securities, now });
     this.universeSize = settings.universeSize || 60;
     this.extrasJob = { state: 'idle', done: 0, total: 0 };
     this.live = { quotes: {}, received: 0, newest: '', job: { state: 'idle', done: 0, total: 0 }, checkedFor: null };
@@ -58,7 +56,7 @@ export class Market {
     const snapIdx = Object.fromEntries((snap.indices || []).map((i) => [i.indexName.toUpperCase(), i]));
 
     const stocks = bulk.filter((q) => q.close).map((q) => ({
-      sym: q.symbol, sector: SECTOR_MAP[q.symbol] || 'Other', price: q.close, prev: q.prev_close, open: q.open, high: q.high, low: q.low, volume: q.volume,
+      sym: q.symbol, sector: this.securities.sector(q.symbol), price: q.close, prev: q.prev_close, open: q.open, high: q.high, low: q.low, volume: q.volume,
       valueCr: turnover[q.symbol] != null ? analysis.pyRound(turnover[q.symbol] / 1e7, 2) : null, hi52: null, lo52: null, pct30: null, ts: q.date,
     })).sort((a, b) => syms.indexOf(a.sym) - syms.indexOf(b.sym));
     if (!stocks.length) throw new Error('no quotes returned from NSE MCP');
@@ -184,7 +182,7 @@ export class Market {
   }
 
   async analyzeDetail(d) {
-    const boot = (await this.snaps.get('bootstrap')) || {}, ctx = analysis.valuationContext(boot), sector = SECTOR_MAP[d.sym];
+    const boot = (await this.snaps.get('bootstrap')) || {}, ctx = analysis.valuationContext(boot), sector = (this.securities.get(d.sym) || {}).industry;
     const price = d.quote.lastTradedPrice, closes = (d.history || []).filter((r) => r[4]).map((r) => r[4]);
     let acts = d.actions; acts = acts && !Array.isArray(acts) ? acts.actions : acts;
     const tech = analysis.technicalFromHistory(closes, price) || analysis.technicalSnapshot({ price, prev: d.quote.preClosePrice, hi52: d.quote.fiftyTwoWeekHigh, lo52: d.quote.fiftyTwoWeekLow, pct30: d.quote.perChange30d });
@@ -201,11 +199,14 @@ export class Market {
   }
 
   async search(q) {
-    q = (q || '').trim().toUpperCase();
+    const raw = (q || '').trim();
+    q = raw.toUpperCase();
     if (!q || !SYMBOL_RE.test(q.replace(/ /g, ''))) return { results: [], source: 'none', note: '' };
     const local = Object.entries(await this.knownSymbols()).filter(([k]) => k.includes(q)).map(([, v]) => v);
     local.sort((a, b) => (!a.symbol.startsWith(q) - !b.symbol.startsWith(q)) || a.symbol.localeCompare(b.symbol));
     let results = local.slice(0, 10).map((v) => ({ ...v, source: 'local' })), note = '';
+    const have = new Set(results.map((r) => r.symbol));
+    results = results.concat(this.securities.searchNames(raw).filter((h) => !have.has(h.symbol)).slice(0, 6).map((h) => ({ symbol: h.symbol, name: h.name, last_close: null, pct_change: null, last_date: null, source: 'list' })));
     if (this.nse.available()) {
       try {
         const remote = await this.cache.cached('search:' + q, 600, () => this.nse.bh('search_symbols', { query: q }));
@@ -216,5 +217,44 @@ export class Market {
       note = 'NSE search is paused' + (this.nse.offline ? ' (offline mode)' : ` (retry in about ${Math.max(1, Math.floor(this.nse.retryInSeconds() / 60))} min)`) + '; showing matches from saved data.';
     }
     return { results, source: note === '' ? 'nse+local' : 'local', note };
+  }
+
+  /* ---------- peers: other stocks of the same industry (from the Nifty Total Market list) ---------- */
+  /** Members of one industry ordered by last session's traded value (close x volume) from NSE's bulk quote: three calls at most. */
+  async rankIndustry(members) {
+    const chunks = []; for (let i = 0; i < members.length; i += 50) chunks.push(members.slice(i, i + 50));
+    const quotes = (await Promise.all(chunks.map((c) => this.nse.bh('get_bulk_quote', { symbols: c })))).flatMap((r) => r.quotes || []);
+    return quotes.filter((q) => q.close && q.volume).sort((a, b) => b.close * b.volume - a.close * a.volume).map((q) => q.symbol);
+  }
+
+  async liveRow(sym) {
+    const q = ((await this.cache.cached('lq:' + sym, 60, () => this.nse.cm('cm_get_stock_quote', { symbol: sym }))) || {}).stock || {};
+    const price = q.lastTradedPrice, prev = q.preClosePrice;
+    const chg = q.perChange != null ? q.perChange : price && prev ? analysis.pyRound(((price - prev) / prev) * 100, 2) : null;
+    return { price, prev, chg, volume: q.volume, valueCr: q.value, ts: q.latestTimestamp };
+  }
+
+  /** The same industry's most-traded stocks with price, change, volume and turnover; NSE's live quotes (the last close when the market is shut).
+   * If NSE cannot be reached the names still show, with saved prices where we have them. */
+  async peers(sym, limit = 10) {
+    const row = this.securities.get(sym);
+    if (!row) return { sym, company: null, industry: null, count: 0, peers: [], self: null };
+    const members = this.securities.members(row.industry), out = { sym, company: row.company, industry: row.industry, count: members.length, peers: [], self: null, stale: false };
+    let ranked;
+    try { ranked = await this.cache.cached('peers-rank:' + row.industry, 1800, () => this.rankIndustry(members)); } catch (e) { ranked = [...members].sort(); out.stale = true; }
+    const top = ranked.filter((m) => m !== sym).slice(0, limit);
+    const saved = Object.fromEntries((((await this.snaps.get('bootstrap')) || {}).stocks || []).map((x) => [x.sym, x]));
+    const one = async (s) => {
+      let r;
+      try { r = await this.liveRow(s); } catch (e) {
+        const x = saved[s] || {}; out.stale = true;
+        r = { price: x.price ?? null, prev: x.prev ?? null, chg: x.price && x.prev ? analysis.pyRound(((x.price - x.prev) / x.prev) * 100, 2) : null, volume: x.volume ?? null, valueCr: x.valueCr ?? null, ts: x.ts ?? null };
+      }
+      return { ...r, sym: s, name: (this.securities.get(s) || {}).company || s };
+    };
+    const rows = await Promise.all([...top, sym].map(one));
+    out.peers = rows.slice(0, -1); out.self = rows[rows.length - 1];
+    out.rank = ranked.includes(sym) ? ranked.indexOf(sym) + 1 : null;
+    return out;
   }
 }
