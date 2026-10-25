@@ -1,0 +1,6 @@
+include README.md
+recursive-include docs *.md *.json
+recursive-include tests *.py
+recursive-include tools *.py
+recursive-include src/marketlens/static *
+global-exclude *.pyc __pycache__

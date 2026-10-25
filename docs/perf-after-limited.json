@@ -1,0 +1,89 @@
+[
+ {
+  "concurrency": 16,
+  "seconds": 6.0,
+  "endpoints": {
+   "/": {
+    "n": 6762,
+    "p50_ms": 1.55,
+    "p95_ms": 4.5,
+    "p99_ms": 7.31,
+    "max_ms": 26.56,
+    "non200": 5937,
+    "bytes": 595
+   },
+   "/api/bootstrap": {
+    "n": 6756,
+    "p50_ms": 1.46,
+    "p95_ms": 4.36,
+    "p99_ms": 7.57,
+    "max_ms": 27.78,
+    "non200": 6445,
+    "bytes": 7039
+   },
+   "/api/config": {
+    "n": 6758,
+    "p50_ms": 1.22,
+    "p95_ms": 3.66,
+    "p99_ms": 5.19,
+    "max_ms": 26.28,
+    "non200": 6450,
+    "bytes": 918
+   },
+   "/api/extras": {
+    "n": 6754,
+    "p50_ms": 1.44,
+    "p95_ms": 4.09,
+    "p99_ms": 6.2,
+    "max_ms": 26.77,
+    "non200": 6473,
+    "bytes": 630
+   },
+   "/api/options?symbol=NIFTY": {
+    "n": 6753,
+    "p50_ms": 1.44,
+    "p95_ms": 3.97,
+    "p99_ms": 6.01,
+    "max_ms": 18.41,
+    "non200": 6731,
+    "bytes": 383
+   },
+   "/api/search?q=REL": {
+    "n": 6748,
+    "p50_ms": 1.42,
+    "p95_ms": 4.01,
+    "p99_ms": 5.67,
+    "max_ms": 28.78,
+    "non200": 6724,
+    "bytes": 225
+   },
+   "/api/stock/RELIANCE": {
+    "n": 6747,
+    "p50_ms": 1.46,
+    "p95_ms": 4.11,
+    "p99_ms": 6.24,
+    "max_ms": 19.35,
+    "non200": 6730,
+    "bytes": 2265
+   },
+   "/js/app.js": {
+    "n": 6760,
+    "p50_ms": 1.45,
+    "p95_ms": 4.14,
+    "p99_ms": 5.81,
+    "max_ms": 9.83,
+    "non200": 5983,
+    "bytes": 16556
+   }
+  },
+  "total_requests": 54038,
+  "rps": 8984.4,
+  "error_rate": 0.9525,
+  "status_counts": {
+   "200": 2565,
+   "429": 51473
+  },
+  "rss_kb_before": 39360,
+  "rss_kb_after": 43952
+ }
+]

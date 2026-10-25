@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+.venv/
+venv/
+
+# Local runtime data: market data from NSE, accounts, audit log, caches. Never commit these.
+data-cache/
+nse-probe/
+*.db
+*.db-wal
+*.db-shm
+breaker.json
+option-inbox/
+marketlens-data/
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.tmp

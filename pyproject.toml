@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "marketlens"
+version = "0.2.0"
+description = "Local NSE markets dashboard: prices, screener with technical, sentiment and income views, live news, option chain."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []   # standard library only
+keywords = ["nse", "stocks", "screener", "dashboard", "mcp"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Environment :: Web Environment",
+  "Intended Audience :: End Users/Desktop",
+  "Topic :: Office/Business :: Financial",
+]
+
+[project.scripts]
+marketlens = "marketlens.cli:main"
+marketlens-options-mcp = "marketlens.options_mcp:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+marketlens = ["static/*.html", "static/css/*", "static/js/*"]

@@ -1,0 +1,62 @@
+# Architecture
+
+```mermaid
+flowchart LR
+  subgraph Browser
+    UI["ES-module UI<br/>app.js, lib.js, screener.js (lazy)"]
+  end
+  subgraph "MarketLens process (127.0.0.1)"
+    HTTP["HTTP/1.1 server<br/>guards, rate limits, load shedding,<br/>request IDs, JSON logs, metrics"]
+    MKT["market / analysis / news / options"]
+    SCH["scheduler (every 150 s)"]
+    CACHE[("TTL cache + JSON snapshots<br/>data dir")]
+    DB[("SQLite: option snapshots<br/>+ hash-chained audit log")]
+  end
+  NSE["NSE MCP servers<br/>(cash market, bhavcopy)"]
+  RSS["Yahoo Finance / Google News RSS"]
+  FO["Optional NSE derivatives<br/>MCP endpoint"]
+  CSV["CSV you download from NSE<br/>(inbox folder / Import)"]
+  UI -- "JSON over HTTP, gzip" --> HTTP
+  HTTP --> MKT
+  MKT -- "max 2 concurrent, circuit breaker" --> NSE
+  MKT --> RSS
+  MKT <--> CACHE
+  HTTP --> DB
+  SCH --> DB
+  SCH -. "if configured" .-> FO
+  CSV --> SCH
+  CSV -- "POST /api/options/import" --> HTTP
+```
+
+## Request path (a stock page)
+`#/quote/TCS` → `api('/api/stock/TCS')` (10 s timeout, 2 retries with backoff and jitter, GET only) → server guard
+(Host/Origin) → rate-limit class `expensive` → `stock_payload` → 5-minute TTL cache → (miss) NSE quote + history +
+52-week range + corporate actions, in parallel but capped at 2 concurrent upstream calls → snapshot written to disk →
+technical and income analysis computed from the history → gzip JSON. If NSE is unreachable the last disk snapshot is
+served with `stale: true`, and the UI says so.
+
+## Data freshness is separate from latency
+A fast API response does not mean fresh data. Each payload carries its own `fetchedAt` / `asOf`; the status line shows
+**Live**, **Delayed** (> 10 min old), **Stale** (server fell back to a saved snapshot), **Disconnected** (the browser
+cannot reach the local server) and **Updating…** independently.
+
+## Decisions and trade-offs
+
+| Decision | Why | Trade-off |
+|---|---|---|
+| Polling every 60 s, not WebSockets/SSE | NSE data arrives per minute at best and upstream is pull-only; a push channel would add reconnect, replay and backpressure code with nothing to push. | Up to 60 s staleness; revisit if a push source appears. |
+| SQLite, one file | Open source, in the standard library, ACID, enough for a few thousand snapshots. | Single writer; fine for one user. |
+| No framework or build step | Few moving parts; one `pip install`. Lazy `import()` gives route-level code splitting for the largest view. | Hand-written rendering; no component library. |
+| In-process token buckets keyed by TCP peer | Single instance, no network hop per request. `X-Forwarded-For` is ignored (forgeable). | Not shared across processes; behind a reverse proxy, limit at the proxy. |
+| Limiter and audit failures degrade differently | A limiter bug fails **open** (availability). An import's audit row is in the same transaction, so it fails **closed** (no unaudited change). Non-critical audit events log a stderr alert and carry on. | A broken audit disk blocks imports until fixed. |
+| Circuit breaker on NSE (15 min, persisted) | NSE's edge blocks clients that send bursts; retrying while blocked prolongs it. | A real outage and a block look the same to the app. |
+| Static sector map, rule constants in one table | NSE does not supply sectors; one `RULES` table feeds both the scoring code and the on-page explanation. | Sector list needs manual upkeep. |
+| No automatic download from NSE's website | The site is protected against automated access; imitating a browser is not acceptable. | The option chain needs a human download or an official endpoint. |
+
+## Security model
+Accounts: every API call except sign-up, sign-in, recovery, `/healthz`, `/readyz` and `/api/auth/status` needs a session, checked
+on the server (see OPERATIONS.md, Accounts). Loopback only; Host and Origin must match (DNS-rebinding and cross-site protection); uploads need a custom header,
+`text/csv`, ≤ 2 MB; strict CSP (`script-src 'self'`, no inline script), `nosniff`, `frame-ancestors 'none'`,
+`Cross-Origin-Resource-Policy: same-origin`; all output escaped in the UI; RSS parsing rejects DOCTYPE/ENTITY
+(entity-expansion attacks) and only `http(s)` links are kept; CSV export neutralises spreadsheet formulas; no secrets,
+no cookies, no accounts, no third-party scripts.
