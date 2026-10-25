@@ -72,7 +72,7 @@ def handle(msg):
         return None
     if method == "initialize":
         result = {"protocolVersion": PROTOCOL, "capabilities": {"tools": {}}, "serverInfo": {"name": "marketlens-options", "version": __version__},
-                  "instructions": "Option-chain snapshots from CSVs the user downloaded or an official endpoint; audit-logged. Not investment advice."}
+                  "instructions": "Option-chain snapshots from CSVs the user downloaded or an official endpoint; audit-logged."}
     elif method == "tools/list":
         result = {"tools": TOOLS}
     elif method == "tools/call":

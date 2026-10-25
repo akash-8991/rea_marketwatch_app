@@ -63,7 +63,7 @@ def main(argv=None):
     print(f"  accounts    : {'sign-in required (--no-login to turn off)' if config.settings.require_login else 'off (--no-login): anyone who can open the page can use it'}")
     print(f"  option chain: inbox {config.inbox_dir()} scanned every {config.settings.option_interval}s; "
           f"{'endpoint configured' if config.settings.fo_url else 'no MCP endpoint (see --fo-mcp-url)'}")
-    print("  Informational only, not investment advice. Press Ctrl+C to stop.")
+    print("  Press Ctrl+C to stop.")
     if not args.no_open:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:

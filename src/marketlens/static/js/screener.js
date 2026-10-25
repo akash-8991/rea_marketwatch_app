@@ -196,14 +196,13 @@ export function rulesHtml(R) {
     <article><h3>Sentiment</h3>
       <p>For each stock we collect up to ${R.sentMaxHeadlines} recent headlines that mention its symbol, from Yahoo Finance and Google News.</p>
       <p>Each headline is scored by counting words from two fixed lists: positive words such as “surge”, “profit”, “upgrade” and “beats”, and negative words such as “fall”, “loss”, “probe” and “misses”. A positive word right after “not”, “no” or “fails” counts as negative, and the other way round. Routine notices such as “record date” are ignored. Headline score = (positive − negative) ÷ (positive + negative), from −1 to +1; a headline with none of these words scores 0.</p>
-      <p>The stock's score is the average of its headline scores. It is <b>Positive</b> only if the average is ${R.sentBand} or higher <em>and</em> at least ${R.sentNet} more headlines are positive than negative. <b>Negative</b> is the mirror image. Everything else is <b>Neutral</b>, and <b>No news</b> means none were found.</p>
-      <p class="muted">This is simple word counting. It cannot read context or sarcasm and may match unrelated stories, so treat it as a rough hint.</p></article>
+      <p>The stock's score is the average of its headline scores. It is <b>Positive</b> only if the average is ${R.sentBand} or higher <em>and</em> at least ${R.sentNet} more headlines are positive than negative. <b>Negative</b> is the mirror image. Everything else is <b>Neutral</b>, and <b>No news</b> means none were found.</p></article>
     <article><h3>Income view</h3>
-      <p>Not a full fundamental analysis (NSE does not publish earnings, debt or growth). Two checks, each from −1 to +1:</p>
+      <p>Two checks on dividends, each from −1 to +1:</p>
       <ol><li>Dividend yield (last 12 months' dividends ÷ price) against the Nifty 50's yield: at least ${R.incYieldMult} times the index is +1, any dividend is 0, none is −1.</li>
         <li>Dividends in all of the last ${R.incYearsFull} calendar years is +1, in ${R.incYearsFull - 1} of them +0.5, in 1 of them 0, none −1.</li></ol>
       <p>Average of ${R.incHigh} or more is <b>Income-oriented</b>; ${R.incLow} or more is <b>Moderate income</b>; below that is <b>Little or no dividend income</b>.</p></article></div>
-    <p class="muted">Hover or focus any badge to see the exact signals behind it. These ratings are simple rules, not predictions or advice.</p>`;
+    <p class="muted">Hover or focus any badge to see the exact signals behind it.</p>`;
 }
 
 /* ---------- events ---------- */

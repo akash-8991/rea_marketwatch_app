@@ -22,8 +22,7 @@ if (!html.includes('js/data.js')) throw new Error('index.html changed: cannot fi
 html = html
   .replace('<meta name="viewport" content="width=device-width, initial-scale=1">', '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">')
   .replace('<link rel="stylesheet" href="css/style.css">', '<link rel="stylesheet" href="css/style.css">\n  <link rel="stylesheet" href="css/mobile.css">')
-  .replace('<script type="module" src="js/data.js"></script>', '<script type="module" src="engine-boot.js"></script>\n  <script type="module" src="js/data.js"></script>')
-  .replace('MarketLens is a local tool using NSE data for information only. Not investment advice.', 'MarketLens runs entirely on this phone and uses NSE data for information only. Not investment advice.');
+  .replace('<script type="module" src="js/data.js"></script>', '<script type="module" src="engine-boot.js"></script>\n  <script type="module" src="js/data.js"></script>');
 writeFileSync(join(www, 'index.html'), html);
 
 // Wording that says "computer" is wrong on a phone.

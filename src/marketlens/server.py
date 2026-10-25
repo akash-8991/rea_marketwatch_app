@@ -59,7 +59,9 @@ def bootstrap_payload():
             raise
         boot = dict(snap, stale=True, staleReason=str(e)[:200], retryInSeconds=nse.retry_in_seconds())
     boot["offline"] = settings.offline
-    boot["stocks"] = [dict(s, techSnap=analysis.technical_snapshot(s)) for s in boot["stocks"]]
+    valid = {sec for sec, _ in market.SECTOR_INDICES}
+    boot["sectorIndices"] = [x for x in boot.get("sectorIndices", []) if x.get("sector") in valid]   # tiles saved by an older release carry old labels
+    boot["stocks"] = [dict(s, sector=market.SECTOR_MAP.get(s["sym"], "Other"), techSnap=analysis.technical_snapshot(s)) for s in boot["stocks"]]   # classification applied at serve time, so saved snapshots follow the current list
     return boot
 
 

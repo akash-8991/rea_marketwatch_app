@@ -1,5 +1,7 @@
 """NSE market data assembly: universe snapshot, per-stock detail, background extras, symbol search."""
+import csv
 import datetime
+import os
 import re
 import threading
 import time
@@ -8,25 +10,20 @@ from concurrent.futures import ThreadPoolExecutor
 from . import analysis, nse, store
 from .config import settings
 
-SECTOR_MAP = {  # static classification kept here; the NSE MCP servers do not provide stock sectors
-    "RELIANCE": "Energy", "ONGC": "Energy", "COALINDIA": "Energy", "BPCL": "Energy", "IOC": "Energy",
-    "TCS": "IT", "INFY": "IT", "HCLTECH": "IT", "WIPRO": "IT", "TECHM": "IT", "LTIM": "IT", "CYIENT": "IT",
-    "HDFCBANK": "Banking", "ICICIBANK": "Banking", "SBIN": "Banking", "KOTAKBANK": "Banking", "AXISBANK": "Banking",
-    "INDUSINDBK": "Banking", "BANKBARODA": "Banking", "PNB": "Banking", "YESBANK": "Banking", "IDFCFIRSTB": "Banking",
-    "BAJFINANCE": "Financial services", "BAJAJFINSV": "Financial services", "SHRIRAMFIN": "Financial services",
-    "JIOFIN": "Financial services", "HDFCLIFE": "Financial services", "SBILIFE": "Financial services", "PFC": "Financial services",
-    "MARUTI": "Auto", "M&M": "Auto", "BAJAJ-AUTO": "Auto", "EICHERMOT": "Auto", "HEROMOTOCO": "Auto", "TVSMOTOR": "Auto",
-    "SUNPHARMA": "Pharma", "CIPLA": "Pharma", "DRREDDY": "Pharma", "DIVISLAB": "Pharma", "APOLLOHOSP": "Healthcare",
-    "HINDUNILVR": "FMCG", "ITC": "FMCG", "NESTLEIND": "FMCG", "BRITANNIA": "FMCG", "TATACONSUM": "FMCG",
-    "ASIANPAINT": "Consumer", "TITAN": "Consumer", "TRENT": "Retail", "ETERNAL": "Internet", "SWIGGY": "Internet",
-    "BHARTIARTL": "Telecom", "LT": "Infrastructure", "ADANIPORTS": "Infrastructure", "ULTRACEMCO": "Materials",
-    "GRASIM": "Materials", "ADANIENT": "Conglomerate", "POWERGRID": "Utilities", "NTPC": "Utilities",
-    "TATASTEEL": "Metals", "JSWSTEEL": "Metals", "HINDALCO": "Metals", "VEDL": "Metals", "BEL": "Industrials", "HAL": "Industrials",
-}
-SECTOR_INDICES = [  # sector-level index performance only (heat map), not stock membership
-    ("Banking", "NIFTY BANK"), ("IT", "NIFTY IT"), ("Auto", "NIFTY AUTO"), ("Pharma", "NIFTY PHARMA"),
-    ("FMCG", "NIFTY FMCG"), ("Metals", "NIFTY METAL"), ("Energy", "NIFTY ENERGY"), ("Realty", "NIFTY REALTY"),
-    ("Media", "NIFTY MEDIA"), ("Financial services", "NIFTY FIN SERVICE"),
+def _load_sectors():
+    """Symbol -> industry from NSE's Nifty Total Market constituents list (data/sectors.csv, the same file the phone app is generated from)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "sectors.csv")
+    with open(path, newline="", encoding="utf-8") as f:
+        return {r["Symbol"]: r["Industry"] for r in csv.DictReader(f)}
+
+
+SECTOR_MAP = _load_sectors()   # about 750 stocks; anything not in the list is "Other"
+SECTOR_INDICES = [  # sector-level index performance for the heat map: (industry in the list above, NSE index that tracks it)
+    ("Financial Services", "NIFTY FINANCIAL SERVICES"), ("Information Technology", "NIFTY IT"), ("Automobile and Auto Components", "NIFTY AUTO"),
+    ("Healthcare", "NIFTY HEALTHCARE INDEX"), ("Fast Moving Consumer Goods", "NIFTY FMCG"), ("Metals & Mining", "NIFTY METAL"),
+    ("Oil Gas & Consumable Fuels", "NIFTY OIL & GAS"), ("Power", "NIFTY POWER"), ("Realty", "NIFTY REALTY"),
+    ("Media Entertainment & Publication", "NIFTY MEDIA"), ("Consumer Durables", "NIFTY CONSUMER DURABLES"), ("Capital Goods", "NIFTY CAPITAL GOODS"),
+    ("Construction Materials", "NIFTY CEMENT"),
 ]
 HEADLINE_INDICES = ["NIFTY 50", "NIFTY BANK", "NIFTY NEXT 50", "NIFTY MIDCAP 100"]
 SYMBOL_RE = re.compile(r"^[A-Za-z0-9&_-]{1,24}$")
@@ -114,7 +111,7 @@ def build_bootstrap():
         "indices": [idx_row(n) for n in HEADLINE_INDICES if n in live_idx or n in snap_idx],
         "valuation": [idx_row(k) for k in snap_idx if snap_idx[k].get("pe")][:120],
         "sectorIndices": sector_idx, "mood": mood, "breadth": breadth, "stocks": stocks,
-        "sectorSource": "static classification (not provided by NSE)",
+        "sectorSource": "NSE Nifty Total Market constituents list",
     }
     store.disk_put("bootstrap", boot)
     return boot

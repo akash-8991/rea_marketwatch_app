@@ -78,7 +78,7 @@ export class Market {
       asOf: mood.date || breadth.date, nseTimestamp: live.nseTimestamp, fetchedAt: this.now().toISOString().slice(0, 19),
       indices: HEADLINE_INDICES.filter((x) => x in liveIdx || x in snapIdx).map(idxRow),
       valuation: Object.keys(snapIdx).filter((k) => snapIdx[k].pe).slice(0, 120).map(idxRow),
-      sectorIndices: sectorIdx, mood, breadth, stocks, sectorSource: 'static classification (not provided by NSE)', liveCheckedFor: prev.liveCheckedFor ?? null,
+      sectorIndices: sectorIdx, mood, breadth, stocks, sectorSource: 'NSE Nifty Total Market constituents list', liveCheckedFor: prev.liveCheckedFor ?? null,
     };
     await this.snaps.put('bootstrap', boot);
     return boot;

@@ -50,7 +50,7 @@ cannot reach the local server) and **Updating…** independently.
 | In-process token buckets keyed by TCP peer | Single instance, no network hop per request. `X-Forwarded-For` is ignored (forgeable). | Not shared across processes; behind a reverse proxy, limit at the proxy. |
 | Limiter and audit failures degrade differently | A limiter bug fails **open** (availability). An import's audit row is in the same transaction, so it fails **closed** (no unaudited change). Non-critical audit events log a stderr alert and carry on. | A broken audit disk blocks imports until fixed. |
 | Circuit breaker on NSE (15 min, persisted) | NSE's edge blocks clients that send bursts; retrying while blocked prolongs it. | A real outage and a block look the same to the app. |
-| Static sector map, rule constants in one table | NSE does not supply sectors; one `RULES` table feeds both the scoring code and the on-page explanation. | Sector list needs manual upkeep. |
+| Sector list from NSE's Nifty Total Market constituents (`src/marketlens/data/sectors.csv`), rule constants in one table | NSE's MCP servers do not supply sectors; the published list classifies about 750 stocks into 22 industries. One CSV feeds both apps (the phone's `sectors.js` is generated from it and a test fails if they differ); one `RULES` table feeds both the scoring code and the on-page explanation. | A stock outside the list is "Other"; the CSV must be refreshed when NSE reconstitutes the index (twice a year). |
 | No automatic download from NSE's website | The site is protected against automated access; imitating a browser is not acceptable. | The option chain needs a human download or an official endpoint. |
 
 ## Security model

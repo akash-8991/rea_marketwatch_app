@@ -18,7 +18,7 @@ startVitals();
     else msg = D.market ? `Market open · prices update about every minute · last refresh ${at}.` : `Live · NSE session ${asOf} · fetched ${at}.`;
     if (conn.updating && state !== 'off') msg += ' Updating…';
     el.className = `banner ${state}`;
-    el.innerHTML = `<span class="dot ${state}" aria-hidden="true"></span><span><span class="state-name">${{ live: 'Live', closed: 'Market closed', stale: 'Stale', delayed: 'Delayed', off: 'Disconnected' }[state]}</span> ${esc(msg)} <span class="muted">Informational only, not investment advice.</span></span>`;
+    el.innerHTML = `<span class="dot ${state}" aria-hidden="true"></span><span><span class="state-name">${{ live: 'Live', closed: 'Market closed', stale: 'Stale', delayed: 'Delayed', off: 'Disconnected' }[state]}</span> ${esc(msg)}</span>`;
   }
   function paintLive() {
     $$('[data-px]').forEach((el) => { const s = bySym[el.dataset.px]; if (s) el.textContent = money(s.price); });
@@ -161,7 +161,7 @@ startVitals();
         <tbody>${[...stocks].sort(cmp).map((s) => `<tr data-sector="${esc(s.sector)}"><td>${symLink(s)}</td><td class="num" data-px="${s.sym}"></td><td class="num" data-chg="${s.sym}"></td>
           <td class="num ${cls(s.pct30 ?? 0)}">${s.pct30 == null ? '—' : signed(s.pct30)}</td><td class="num">${pos52(s) == null ? '—' : pos52(s).toFixed(0) + '%'}</td>
           <td class="num">${money(s.valueCr, 0)}</td><td class="num">${s.div == null ? '—' : s.div}</td></tr>`).join('')}</tbody></table></div>
-        <p class="muted">Sectors are a static classification maintained in this demo (NSE does not supply them); “Other” means unclassified. Dividend yield = trailing-12-month dividends ÷ price${D.extrasReady ? '' : ' (still loading)'}.</p>
+        <p class="muted">Sectors come from NSE’s Nifty Total Market list; “Other” means a stock that is not in it. Dividend yield = trailing-12-month dividends ÷ price${D.extrasReady ? '' : ' (still loading)'}.</p>
       </section>`,
       after() {
         $('#mkt-sort').addEventListener('change', (e) => { store.set('ml.mktsort', e.target.value); route(); });
@@ -178,7 +178,7 @@ startVitals();
   }
   function tone(items) {
     const s = items.map((n) => n.sentiment || 0), pos = s.filter((v) => v > 0.05).length, neg = s.filter((v) => v < -0.05).length;
-    return items.length ? `Headline wording: ${pos} positive, ${neg} negative, ${items.length - pos - neg} neutral (keyword-based, approximate).` : '';
+    return items.length ? `Headline wording: ${pos} positive, ${neg} negative, ${items.length - pos - neg} neutral.` : '';
   }
   views.news = () => {
     const region = store.get('ml.newsregion', 'india');
@@ -258,7 +258,7 @@ startVitals();
               <section class="card"><div class="scroll"><table class="tbl oc"><thead><tr><th colspan="5" class="num">CALLS</th><th class="num">Strike</th><th colspan="5">PUTS</th></tr>
               <tr><th class="num">OI</th><th class="num">Chg OI</th><th class="num">Vol</th><th class="num">IV</th><th class="num">LTP</th><th></th><th class="num">LTP</th><th class="num">IV</th><th class="num">Vol</th><th class="num">Chg OI</th><th class="num">OI</th></tr></thead><tbody>
               ${d.rows.map((r) => { const c = r.ce || {}, p = r.pe || {}; return `<tr class="${r.strike === S.atm ? 'atm' : ''}"><td class="num" ${bar(c.oi, 'ce')}>${n(c.oi)}</td><td class="num ${sgn(c.chgOi)}">${chg(c.chgOi)}</td><td class="num">${n(c.vol)}</td><td class="num">${n(c.iv, 1)}</td><td class="num">${n(c.ltp, 2)}</td>
-                <td class="num strike">${n(r.strike)}</td><td class="num">${n(p.ltp, 2)}</td><td class="num">${n(p.iv, 1)}</td><td class="num">${n(p.vol)}</td><td class="num ${sgn(p.chgOi)}">${chg(p.chgOi)}</td><td class="num" ${bar(p.oi, 'pe')}>${n(p.oi)}</td></tr>`; }).join('')}</tbody></table></div>${m.tradeDate ? `<p class="muted pad">Contract figures (open interest, LTP = closing price) are from NSE’s last published end-of-day file; NSE does not publish a free live option feed.${d.spotLive ? ' Only the spot price and the at-the-money row are live.' : ''} It has no implied volatility or bid/ask, so those show as —.</p>` : ''}</section>`;
+                <td class="num strike">${n(r.strike)}</td><td class="num">${n(p.ltp, 2)}</td><td class="num">${n(p.iv, 1)}</td><td class="num">${n(p.vol)}</td><td class="num ${sgn(p.chgOi)}">${chg(p.chgOi)}</td><td class="num" ${bar(p.oi, 'pe')}>${n(p.oi)}</td></tr>`; }).join('')}</tbody></table></div>${m.tradeDate ? `<p class="muted pad">Open interest and LTP (closing price) are from NSE’s last end-of-day file${d.spotLive ? '; the spot price and the at-the-money row are live' : ''}. Implied volatility and bid/ask are not in that file.</p>` : ''}</section>`;
           }).catch((err) => { $('#oc-body').innerHTML = `<section class="card"><p>Could not load the option chain.</p><p class="muted">${esc(err.message)}</p></section>`; });
         };
         form.addEventListener('submit', (ev) => { ev.preventDefault(); loadChain(); });
@@ -293,12 +293,12 @@ startVitals();
       return { html: `<article class="card article"><p class="muted">${esc(n.cat)} · generated from NSE data, ${D.asOf ? fmtDate(D.asOf) : ''}</p><h1>${tint(n.title)}</h1>
         ${n.body.filter(Boolean).map((p) => `<p>${tint(p)}</p>`).join('')}
         ${n.related.length ? `<h3>Related stocks</h3><ul class="list">${n.related.filter((r) => bySym[r]).map((r) => `<li>${symLink(bySym[r])}</li>`).join('')}</ul>` : ''}
-        <p class="muted">These items are produced automatically from NSE figures. They are not editorial news.</p><a class="more" href="#/updates">« All updates</a></article>` };
+        <a class="more" href="#/updates">« All updates</a></article>` };
     }
     const cat = store.get('ml.newscat', 'all');
     const cats = ['all', ...new Set(updates.map((n) => n.cat))];
     return {
-      html: `<h1>Market updates</h1><p class="muted">Generated from NSE data for the ${D.asOf ? fmtDate(D.asOf) : 'last'} session. NSE’s data feeds do not include news articles.</p>
+      html: `<h1>Market updates</h1><p class="muted">Generated from NSE data for the ${D.asOf ? fmtDate(D.asOf) : 'last'} session.</p>
         <div class="tabs" id="news-cats">${cats.map((c) => `<button data-c="${c}" class="${c === cat ? 'on' : ''}">${esc(c)}</button>`).join('')}</div>
         <section class="card"><ul class="list big">${updates.filter((n) => cat === 'all' || n.cat === cat).map((n) => `<li><a href="#/updates/${n.id}">${tint(n.title)}</a><p class="muted">${tint(n.sum)}</p></li>`).join('')}</ul></section>`,
       after() { $$('#news-cats button').forEach((b) => b.addEventListener('click', () => { store.set('ml.newscat', b.dataset.c); route(); })); },
@@ -370,7 +370,7 @@ startVitals();
       if (d.error) throw new Error(d.error);
       if (d.disabled) { box.innerHTML = '<h2>News and sentiment</h2><p>News is turned off (started with --no-news).</p>'; return; }
       const s = d.sentiment || {};
-      box.innerHTML = `<h2>News and sentiment</h2>${s.n ? `<p>${badge(s.label, '', toneKind(s.label))} <span class="muted">${s.n} headlines · ${s.pos} positive · ${s.neg} negative · keyword-based, approximate</span></p>` : '<p class="muted">No recent headlines found for this symbol.</p>'}${d.items.length ? newsList(d.items) : ''}
+      box.innerHTML = `<h2>News and sentiment</h2>${s.n ? `<p>${badge(s.label, '', toneKind(s.label))} <span class="muted">${s.n} headlines · ${s.pos} positive · ${s.neg} negative</span></p>` : '<p class="muted">No recent headlines found for this symbol.</p>'}${d.items.length ? newsList(d.items) : ''}
         <p class="muted">Matches are by symbol and can include unrelated stories.</p>`;
     }).catch((e) => { const box = $('#qnews'); if (box) box.innerHTML = `<h2>News and sentiment</h2><p>Could not load headlines right now.</p><p class="muted">${esc(e.message)}</p>`; });
   }
@@ -407,7 +407,7 @@ startVitals();
         <table class="tbl"><tbody>${sigRows(T.signals)}</tbody></table>
         <table class="tbl kv"><tbody><tr><td>RSI (14)</td><td class="num">${T.rsi ?? '—'}</td></tr><tr><td>SMA 20 / SMA 50</td><td class="num">${T.sma20 != null ? money(T.sma20) : '—'} / ${T.sma50 != null ? money(T.sma50) : '—'}</td></tr><tr><td>MACD histogram</td><td class="num">${T.macdHist ?? '—'}</td></tr></tbody></table>` : '<p class="muted">Not enough data.</p>'}
         <p class="muted">Rule-based trend and momentum indicators. Not a prediction.</p></section>
-        <section class="card"><h2>Fundamental view (limited)</h2>${F && F.score != null ? `<p>${badge(F.label, '', toneKind(F.label))} <span class="muted">score ${F.score}</span></p><table class="tbl"><tbody>${sigRows(F.signals)}</tbody></table>
+        <section class="card"><h2>Fundamental view</h2>${F && F.score != null ? `<p>${badge(F.label, '', toneKind(F.label))} <span class="muted">score ${F.score}</span></p><table class="tbl"><tbody>${sigRows(F.signals)}</tbody></table>
         <table class="tbl kv"><tbody><tr><td>Dividend yield (TTM)</td><td class="num">${F.yield != null ? F.yield + '%' : '—'}</td></tr><tr><td>Sector index P/E · P/B</td><td class="num">${F.sectorPE ?? '—'} · ${F.sectorPB ?? '—'}</td></tr><tr><td>Sector index dividend yield</td><td class="num">${F.sectorYield != null ? F.sectorYield + '%' : '—'}</td></tr></tbody></table>` : '<p class="muted">Corporate-action data is not available yet.</p>'}
         <p class="muted">${esc((F && F.basis) || 'Based on NSE dividends and corporate actions.')}. NSE does not publish this stock’s P/E, earnings, debt or growth, so this is not a full fundamental analysis.</p></section></div>`;
     }

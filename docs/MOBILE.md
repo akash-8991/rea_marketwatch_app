@@ -66,6 +66,8 @@ option contracts themselves cannot be live. This is stated on the screen. Live p
 live call), made two at a time, so they arrive over a few seconds with the most-traded stocks first.
 
 ## 2d. Reading the screens
+- **Sectors** follow NSE's Nifty Total Market list (about 750 stocks in 22 industries); other stocks show as "Other". The only disclaimer in the app
+  is the one-line educational notice at the bottom of every screen.
 - **Green and red:** every increase is green and every decrease red (prices, changes, 30-day moves, change in open interest,
   score signs, and the figures in generated market updates), including the Change columns of the stock tables on Home, Markets and the Watchlist. Signed values also carry a "+" or "−", so colour is never the only cue.
 - **Stock tables show just the stock symbol** (no sector line under it), so each stock is one row of one line; use the sector filter on Markets.

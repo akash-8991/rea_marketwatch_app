@@ -4,7 +4,7 @@
    "actor": "system",
    "channel": "system",
    "detail": "golden",
-   "entryHash": "3cf9746c780e86a47a17ee3cbacffd92a8036fbc0efbe394fb8b548af30fdd48",
+   "entryHash": "c3e3037fd31b5c06b5913eb5f31dcd5910c1c06c7a1e9be8b1c7d19b8beab766",
    "event": "startup",
    "id": 1,
    "outcome": "ok",
@@ -14,42 +14,42 @@
    "sha256": null,
    "snapshotId": null,
    "symbol": null,
-   "ts": "2026-10-25T16:26:32+00:00",
-   "uid": "6cc73a0f7eb04baba450224030af2e2a"
+   "ts": "2026-10-25T18:56:55+00:00",
+   "uid": "bce7e9a1c35642a78c7cc8a8530af1da"
   },
   {
    "actor": "tester",
    "channel": "internal",
    "detail": "NIFTY 27-Oct-2026 from csv:x: 3 strikes",
-   "entryHash": "5ccc797212408d6b8772b5aa83c8582423836b13b1c6bd1ce6a0dd17ab1aeff2",
+   "entryHash": "78abd66085c6eddc9046e4e8947408a9c64ee3947125782eec4d8bb8fe599863",
    "event": "import_ok",
    "id": 2,
    "outcome": "ok",
-   "prevHash": "3cf9746c780e86a47a17ee3cbacffd92a8036fbc0efbe394fb8b548af30fdd48",
+   "prevHash": "c3e3037fd31b5c06b5913eb5f31dcd5910c1c06c7a1e9be8b1c7d19b8beab766",
    "requestId": null,
    "schemaVer": 2,
    "sha256": "abababababababababababababababababababababababababababababababab",
    "snapshotId": 1,
    "symbol": "NIFTY",
-   "ts": "2026-10-25T16:26:32+00:00",
-   "uid": "66f5b9d6d5e443f1a4b192943fac24e8"
+   "ts": "2026-10-25T18:56:55+00:00",
+   "uid": "cdf084866f6b43ceacafc02bc36b4f00"
   },
   {
    "actor": "anonymous",
    "channel": "web",
    "detail": "incorrect user ID or password",
-   "entryHash": "ad25c0981e8ccca3b9dad3b73baea931b299e85569423600dc7b10be50a9d94d",
+   "entryHash": "db641c58b8817528d20c6c2d8f316c218b27509e6940121601a8b57e73f49ffc",
    "event": "login_failed",
    "id": 3,
    "outcome": "denied",
-   "prevHash": "5ccc797212408d6b8772b5aa83c8582423836b13b1c6bd1ce6a0dd17ab1aeff2",
+   "prevHash": "78abd66085c6eddc9046e4e8947408a9c64ee3947125782eec4d8bb8fe599863",
    "requestId": "req-1",
    "schemaVer": 2,
    "sha256": null,
    "snapshotId": null,
    "symbol": null,
-   "ts": "2026-10-25T16:26:32+00:00",
-   "uid": "5c20fa05d62c4d07a31c4c38013f93e7"
+   "ts": "2026-10-25T18:56:55+00:00",
+   "uid": "452daad2234347b19f80b41765e51a5b"
   }
  ],
  "badCsv": {
@@ -60,14 +60,7 @@
  "ctx": {
   "benchPE": 22.1,
   "benchYield": 1.3,
-  "sectors": {
-   "Banking": {
-    "divYield": 0.9,
-    "name": "NIFTY BANK",
-    "pb": 2.1,
-    "pe": 14.2
-   }
-  }
+  "sectors": {}
  },
  "estSpot": 24549.8,
  "fnGuess": [
@@ -96,15 +89,15 @@
    "yield": null
   },
   "one": {
-   "basis": "dividends and corporate actions published by NSE; no earnings, debt or growth data",
+   "basis": "dividends and corporate actions published by NSE",
    "bonusOrSplit": 0,
    "dividendYears": 1,
    "dividendsTtm": 4,
    "label": "Moderate income",
    "score": 0.0,
-   "sectorPB": 2.1,
-   "sectorPE": 14.2,
-   "sectorYield": 0.9,
+   "sectorPB": null,
+   "sectorPE": null,
+   "sectorYield": null,
    "signals": [
     {
      "name": "Dividend yield vs Nifty 50",
@@ -120,15 +113,15 @@
    "yield": 0.5
   },
   "rich": {
-   "basis": "dividends and corporate actions published by NSE; no earnings, debt or growth data",
+   "basis": "dividends and corporate actions published by NSE",
    "bonusOrSplit": 1,
    "dividendYears": 3,
    "dividendsTtm": 30,
    "label": "Income-oriented",
    "score": 1.0,
-   "sectorPB": 2.1,
-   "sectorPE": 14.2,
-   "sectorYield": 0.9,
+   "sectorPB": null,
+   "sectorPE": null,
+   "sectorYield": null,
    "signals": [
     {
      "name": "Dividend yield vs Nifty 50",
@@ -154,7 +147,7 @@
    "yield": null
   },
   "zero": {
-   "basis": "dividends and corporate actions published by NSE; no earnings, debt or growth data",
+   "basis": "dividends and corporate actions published by NSE",
    "bonusOrSplit": 0,
    "dividendYears": 0,
    "dividendsTtm": 0,

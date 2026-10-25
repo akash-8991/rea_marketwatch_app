@@ -107,7 +107,7 @@ test('bootstrap through a flaky MCP server (half the calls 404), then extras and
   assert.equal(b.status, 200);
   assert.equal(b.body.stocks.length, 3);
   assert.equal(b.body.stale, false);
-  assert.equal(b.body.stocks[0].sector, 'IT');
+  assert.equal(b.body.stocks[0].sector, 'Information Technology');
   assert.ok(b.body.stocks[0].techSnap.label);
   assert.ok(net.calls.maxInflight <= 2, `max in flight was ${net.calls.maxInflight}`);                       // the 2-request cap holds
   const s = await get(e, '/api/stock/tcs', t);
@@ -223,4 +223,13 @@ test('sessions last 15 days regardless of use, then end; sign-out ends them at o
   await post(e, '/api/auth/logout', {}, t2);
   assert.equal((await get(e, '/api/auth/me', t2)).status, 401);
   assert.deepEqual((await get(e, '/api/auth/status', t2)).body.signedIn, false);
+});
+
+test('sector classification follows the current list even for data saved by an older release', async () => {
+  const storage = new MemoryStorage();
+  await storage.set('snap:bootstrap', { at: Date.now(), val: { asOf: '2026-10-23', fetchedAt: '2026-10-23T10:00:00', indices: [], valuation: [], sectorIndices: [], mood: {}, breadth: {},
+    stocks: [{ sym: 'TCS', sector: 'IT', price: 100, prev: 99 }, { sym: 'RELIANCE', sector: 'Energy', price: 100, prev: 99 }, { sym: 'NOTINLIST', sector: 'IT', price: 5, prev: 5 }] } });
+  const e = createEngine({ storage, fetchFn: async () => new Response('', { status: 500 }), optionSource: NOFILE, settings: { requireLogin: false, offline: true, pbkdf2Iterations: 1000 } });
+  const s = (await e.handle('GET', '/api/bootstrap')).body.stocks;
+  assert.deepEqual(s.map((x) => x.sector), ['Information Technology', 'Oil Gas & Consumable Fuels', 'Other']);
 });

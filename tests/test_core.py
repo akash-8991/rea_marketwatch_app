@@ -85,7 +85,7 @@ class FundamentalTests(unittest.TestCase):
         boot = {"valuation": [{"name": "Nifty 50", "pe": 19.0, "divYield": 1.5}, {"name": "Nifty IT", "pe": 28.0, "pb": 7.0, "divYield": 2.0}]}
         c = analysis.valuation_context(boot)
         self.assertEqual(c["benchYield"], 1.5)
-        self.assertEqual(c["sectors"]["IT"]["pe"], 28.0)
+        self.assertEqual(c["sectors"]["Information Technology"]["pe"], 28.0)
 
 
 class SentimentTests(unittest.TestCase):
@@ -243,3 +243,30 @@ class StoreTests(TempData):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SectorList(unittest.TestCase):
+    """Sectors come from NSE's Nifty Total Market constituents list shipped in data/sectors.csv."""
+
+    def test_list_is_loaded_with_nse_industry_names(self):
+        from marketlens import market
+        self.assertGreaterEqual(len(market.SECTOR_MAP), 750)
+        self.assertEqual(market.SECTOR_MAP["TCS"], "Information Technology")
+        self.assertEqual(market.SECTOR_MAP["RELIANCE"], "Oil Gas & Consumable Fuels")
+        self.assertEqual(market.SECTOR_MAP["M&M"], "Automobile and Auto Components")
+        self.assertEqual(len(set(market.SECTOR_MAP.values())), 22)
+
+    def test_every_sector_that_has_an_index_is_a_real_industry(self):
+        from marketlens import market
+        industries = set(market.SECTOR_MAP.values())
+        for sector, index in market.SECTOR_INDICES:
+            self.assertIn(sector, industries)
+        for sector in analysis.SECTOR_INDEX:
+            self.assertIn(sector, industries)
+
+    def test_phone_app_uses_the_same_list(self):
+        import json, os, re, subprocess
+        from marketlens import market
+        js = open(os.path.join(os.path.dirname(__file__), "..", "mobile", "engine", "sectors.js"), encoding="utf-8").read()
+        mapping = json.loads(re.search(r"SECTOR_MAP = (\{.*?\});\n", js, re.S).group(1))
+        self.assertEqual(mapping, market.SECTOR_MAP, "run: PYTHONPATH=src python3 mobile/scripts/gen-sectors.py > mobile/engine/sectors.js")

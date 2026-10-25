@@ -1,5 +1,5 @@
 /* Technical, fundamental and sentiment scoring: a line-for-line port of src/marketlens/analysis.py.
- * Simple, transparent rule sets for exploration, not investment advice. The golden tests in mobile/tests compare
+ * Simple, transparent rule sets. The golden tests in mobile/tests compare
  * this file's output with the Python module's output on the same inputs. */
 
 export const RULES = {
@@ -112,8 +112,11 @@ export function technicalSnapshot(s) {
 
 /* ---------- fundamental (limited to what NSE publishes) ---------- */
 export const SECTOR_INDEX = {
-  Banking: 'nifty bank', IT: 'nifty it', Auto: 'nifty auto', Pharma: 'nifty pharma', FMCG: 'nifty fmcg', Metals: 'nifty metal',
-  Energy: 'nifty energy', Realty: 'nifty realty', Media: 'nifty media', 'Financial services': 'nifty financial services',
+  'Financial Services': 'nifty financial services', 'Information Technology': 'nifty it', 'Automobile and Auto Components': 'nifty auto',
+  Healthcare: 'nifty healthcare index', 'Fast Moving Consumer Goods': 'nifty fmcg', 'Metals & Mining': 'nifty metal',
+  'Oil Gas & Consumable Fuels': 'nifty oil & gas', Power: 'nifty power', Realty: 'nifty realty', 'Media Entertainment & Publication': 'nifty media',
+  'Consumer Durables': 'nifty consumer durables', 'Consumer Services': 'nifty consumer services', 'Capital Goods': 'nifty capital goods',
+  'Construction Materials': 'nifty cement', Construction: 'nifty infrastructure', Services: 'nifty services sector',
 };
 
 export function valuationContext(boot) {
@@ -149,7 +152,7 @@ export function fundamental(divTtm, price, actions, sector = null, ctx = null, t
   const [score, signals] = combine(parts);
   const lab = score >= RULES.incHigh ? 'Income-oriented' : score >= RULES.incLow ? 'Moderate income' : 'Little or no dividend income';
   return { label: lab, score, yield: yld, dividendsTtm: divTtm, dividendYears: consistency, bonusOrSplit: bonus, signals,
-    basis: 'dividends and corporate actions published by NSE; no earnings, debt or growth data', ...secOut };
+    basis: 'dividends and corporate actions published by NSE', ...secOut };
 }
 
 /* ---------- sentiment (headline lexicon) ---------- */

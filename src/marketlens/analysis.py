@@ -1,6 +1,6 @@
 """Technical, fundamental and sentiment scoring.
 
-These are simple, transparent rule sets for exploration, not investment advice. Every result carries the
+These are simple, transparent rule sets. Every result carries the
 signals that produced it and the basis it was computed on, so the UI can show its limits.
 Fundamentals are limited to what NSE publishes (dividends, corporate actions, index-level valuation):
 NSE does not provide per-stock P/E, earnings, debt or growth figures.
@@ -122,9 +122,11 @@ def technical_snapshot(s):
 
 # ---------- fundamental (limited to what NSE publishes) ----------
 
-SECTOR_INDEX = {"Banking": "nifty bank", "IT": "nifty it", "Auto": "nifty auto", "Pharma": "nifty pharma", "FMCG": "nifty fmcg",
-                "Metals": "nifty metal", "Energy": "nifty energy", "Realty": "nifty realty", "Media": "nifty media",
-                "Financial services": "nifty financial services"}
+SECTOR_INDEX = {"Financial Services": "nifty financial services", "Information Technology": "nifty it", "Automobile and Auto Components": "nifty auto",
+                "Healthcare": "nifty healthcare index", "Fast Moving Consumer Goods": "nifty fmcg", "Metals & Mining": "nifty metal",
+                "Oil Gas & Consumable Fuels": "nifty oil & gas", "Power": "nifty power", "Realty": "nifty realty", "Media Entertainment & Publication": "nifty media",
+                "Consumer Durables": "nifty consumer durables", "Consumer Services": "nifty consumer services", "Capital Goods": "nifty capital goods",
+                "Construction Materials": "nifty cement", "Construction": "nifty infrastructure", "Services": "nifty services sector"}
 
 
 def valuation_context(boot):
@@ -158,7 +160,7 @@ def fundamental(div_ttm, price, actions, sector=None, ctx=None, today=None):
     score, signals = _combine(parts)
     label = "Income-oriented" if score >= RULES["incHigh"] else "Moderate income" if score >= RULES["incLow"] else "Little or no dividend income"
     return {"label": label, "score": score, "yield": yld, "dividendsTtm": div_ttm, "dividendYears": consistency, "bonusOrSplit": bonus,
-            "signals": signals, "basis": "dividends and corporate actions published by NSE; no earnings, debt or growth data",
+            "signals": signals, "basis": "dividends and corporate actions published by NSE",
             "sectorPE": sec.get("pe"), "sectorPB": sec.get("pb"), "sectorYield": sec.get("divYield")}
 
 

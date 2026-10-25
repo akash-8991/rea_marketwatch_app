@@ -12,6 +12,7 @@ import { OptionFeed } from './optionfeed.js';
 import { inSessionHours, lastSessionDate, marketState } from './marketclock.js';
 import { summarize } from './options.js';
 import { migrate } from './migrations.js';
+import { SECTOR_MAP, SECTOR_INDICES } from './sectors.js';
 
 export const VERSION = '0.3.0-mobile';
 const MAX_UPLOAD = 2_000_000;
@@ -86,12 +87,14 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
       }
     }
     boot.offline = cfg.offline;
+    const validSectors = new Set(SECTOR_INDICES.map(([sec]) => sec));
+    boot.sectorIndices = (boot.sectorIndices || []).filter((x) => validSectors.has(x.sector));   // tiles saved by an older release carry old labels
     boot = await withExtras(boot);
     boot.stocks = market.mergeLive(boot.stocks);
     if (market.live.job.state === 'running') boot.refreshing = true;
     const seen = market.live.received ? market.liveSeen() : { received: 0, newest: boot.stocks.reduce((m, x) => ((x.ts || '') > m ? x.ts : m), '') };
     boot.market = marketState(now(), seen);
-    boot.stocks = boot.stocks.map((s) => ({ ...s, techSnap: analysis.technicalSnapshot(s) }));
+    boot.stocks = boot.stocks.map((s) => ({ ...s, sector: SECTOR_MAP[s.sym] || 'Other', techSnap: analysis.technicalSnapshot(s) }));   // classification applied at serve time, so saved snapshots follow the current list
     return boot;
   }
 

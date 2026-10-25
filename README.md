@@ -19,7 +19,7 @@ Python standard library.
   changing the user ID or password, ask for name, email and date of birth and only proceed if all three match.
 - Dark mode.
 
-> Informational only. Not investment advice. All scores are simple rules, not predictions.
+> This is an educational app. Nothing shown here is investment advice.
 
 ## Get the app (pick one)
 
@@ -27,7 +27,7 @@ Python standard library.
 |---|---|---|
 | **An Android phone** | On the phone, tap **[Download MarketLens for Android](https://github.com/akash-8991/rea_marketwatch_app/raw/main/downloads/MarketLens-android.apk)** (a ready-built `.apk`, nothing to run), open the downloaded file, allow the install, create an account. Standalone: no computer needed. Details: [docs/MOBILE.md](docs/MOBILE.md). | 2 min |
 | **Docker** | `docker run -d --name marketlens -p 127.0.0.1:8080:8080 -v marketlens-data:/data ghcr.io/akash-8991/rea_marketwatch_app:latest`, then open <http://127.0.0.1:8080>. Or use [docker-compose.yml](docker-compose.yml). | 1 min |
-| **Python 3.9+** | `pip install marketlens-0.2.2-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
+| **Python 3.9+** | `pip install marketlens-0.3.0-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
 | **An iPhone** | Not available yet; needs a Mac with Xcode to build. See [docs/MOBILE.md](docs/MOBILE.md), section 7. | |
 
 The first screen asks you to create an account; after that you sign in with your user ID and password. You then stay signed in
@@ -53,7 +53,7 @@ happen on GitHub), [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/ARCHITECTURE.
 Requires Python 3.9 or newer (tested on 3.12, 3.13 and 3.14; 3.9-3.11 are untested).
 
 ```bash
-pip install marketlens-0.2.2-py3-none-any.whl     # or: pip install .  from a source checkout
+pip install marketlens-0.3.0-py3-none-any.whl     # or: pip install .  from a source checkout
 marketlens                                         # opens http://127.0.0.1:8080/
 marketlens-options-mcp --data-dir <data folder>    # optional: MCP (stdio) server over the option-chain database
 ```
@@ -94,8 +94,9 @@ unreachable or `--offline` is used. **No NSE data is bundled in this package.**
 NSE's feeds do not include per-stock P/E, market cap, earnings, debt or growth, company names, news articles or
 intraday charts, so none are shown. The "income view" is therefore **not** a full fundamental analysis: it compares
 dividend yield with the Nifty 50 and checks dividend consistency over three years, and shows the sector index's
-P/E and P/B for context. Sector labels are a small static map in `market.py` (NSE does not provide them);
-unlisted stocks show no sector. NSE returns about three months of daily history, so SMA 200 is not computed.
+P/E and P/B for context. Sectors come from NSE's Nifty Total Market constituents list (`src/marketlens/data/sectors.csv`: about 750 stocks, 22 industries; the NSE MCP servers do not provide sectors);
+stocks that are not in the list show as "Other". The list is NSE Indices' published constituents file, kept only for classification (symbol, industry, company name); check NSE's terms if you redistribute the package. To refresh the list when NSE reconstitutes the index, replace the CSV (columns Symbol, Industry, Company Name) and run
+`PYTHONPATH=src python3 mobile/scripts/gen-sectors.py > mobile/engine/sectors.js` for the phone app. NSE returns about three months of daily history, so SMA 200 is not computed.
 
 ### How the analysis works
 - **Technical**: price vs 20-day average, 20- vs 50-day average, RSI(14), MACD histogram, combined into a score

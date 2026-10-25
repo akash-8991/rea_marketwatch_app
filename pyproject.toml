@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "marketlens"
-version = "0.2.2"
+version = "0.3.0"
 description = "Local NSE markets dashboard: prices, screener with technical, sentiment and income views, live news, option chain."
 readme = "README.md"
 license = {text = "MIT"}
@@ -27,4 +27,4 @@ marketlens-options-mcp = "marketlens.options_mcp:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-marketlens = ["static/*.html", "static/css/*", "static/js/*"]
+marketlens = ["static/*.html", "static/css/*", "static/js/*", "data/*.csv"]
