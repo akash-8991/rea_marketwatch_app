@@ -13,7 +13,7 @@ const D = (window.MLData = {
 
 function applyBoot(boot) {
   D.asOf = boot.asOf; D.fetchedAt = boot.fetchedAt; D.nseTimestamp = boot.nseTimestamp;
-  D.refreshing = !!boot.refreshing; D.stale = !!boot.stale; D.staleReason = boot.staleReason || ''; D.retryIn = boot.retryInSeconds || 0;
+  D.market = boot.market || null; D.refreshing = !!boot.refreshing; D.stale = !!boot.stale; D.staleReason = boot.staleReason || ''; D.retryIn = boot.retryInSeconds || 0;
   D.mood = boot.mood || {}; D.breadth = boot.breadth || {};
   D.valuation = boot.valuation || []; D.sectorIdx = boot.sectorIndices || [];
   D.sectorSource = boot.sectorSource || '';

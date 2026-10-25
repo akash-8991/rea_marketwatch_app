@@ -6,7 +6,7 @@ Everything users download is built on GitHub; nobody needs a build machine.
 |---|---|---|---|
 | Android app `.apk` (checksum in `downloads/checksums/`) | `android.yml` | tag `mobile-vX.Y.Z` (build only: push to `mobile-app`, manual run) | GitHub **Release** for the tag **and** `downloads/MarketLens-android.apk` on `main` (the direct-download link); run artifact otherwise |
 | Container image | `container.yml` | push to `main` (`:latest`), tag `vX.Y.Z` (`:X.Y.Z`, `:X.Y`) | `ghcr.io/akash-8991/rea_marketwatch_app` (Packages) |
-| Python wheel + sdist | built by hand: `python -m pip wheel . --no-deps -w dist` | version bump | `dist/` in the repository (with `SHA256SUMS.txt`) |
+| Python wheel + sdist | built by hand: `python3 -m pip wheel . --no-deps -w dist` and `python3 -c "from setuptools import setup; setup()" sdist --dist-dir dist` | version bump | `dist/` in the repository (with `SHA256SUMS.txt`); only the current version is kept |
 
 Every build first runs the tests: the 140 Python tests (`container.yml`) and the 19 JavaScript engine tests, which compare
 against the Python engine's output (`android.yml`). Pull requests run tests and build, but publish nothing.
@@ -24,8 +24,8 @@ against the Python engine's output (`android.yml`). Pull requests run tests and 
 ```bash
 # 1. bump versions (mobile/package.json is the Android version): pyproject.toml + src/marketlens/__init__.py (desktop), mobile/package.json (Android), update docs
 # 2. make sure main is green (Actions tab), then:
-git tag v0.2.0        && git push origin v0.2.0          # container image :0.2.0 and :0.2
-git tag mobile-v0.3.2 && git push origin mobile-v0.3.2   # Android APK as a GitHub Release
+git tag v0.2.1        && git push origin v0.2.1          # container image :0.2.1 and :0.2
+git tag mobile-v0.5.0 && git push origin mobile-v0.5.0   # Android APK as a GitHub Release
 ```
 The Android version code is the workflow run number, so each build can update the previous one if signed with the same key.
 

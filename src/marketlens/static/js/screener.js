@@ -1,6 +1,6 @@
 /* Stock screener view (lazy-loaded ES module). Layout: filter chips with popovers, view tabs, column chooser, sortable
  * sticky-header table, pagination, saved screens, CSV export, and the plain-language rules at the bottom. */
-import { $, $$, esc, money, signed, cls, arrow, chgPct, pos52, compact, symLink, secTag, store, api, debounce, icon, badge, toneKind, sparkline, skeleton, emptyState, errorState, safeUrl } from './lib.js';
+import { $, $$, esc, money, signed, sgn, cls, arrow, chgPct, pos52, compact, symLink, secTag, store, api, debounce, icon, badge, toneKind, sparkline, skeleton, emptyState, errorState, safeUrl } from './lib.js';
 
 const KEY = 'ml.screener2', SAVED = 'ml.screens2';
 // A factory, not a shared object: nested filter maps are mutated in place, so every state must own its own copies.
@@ -31,13 +31,13 @@ const COLS = {
   secYield: { label: 'Sector index yield %', num: true, html: (r) => r.secYield ?? '—', csv: (r) => r.secYield },
   sector: { label: 'Sector', html: (r) => esc(r.sector === 'Other' ? '—' : r.sector), csv: (r) => r.sector },
   tech: { label: 'Technical', html: (r) => (r.tech ? badge(r.tech + (r.techFull ? '' : '*'), r.techTip, toneKind(r.tech)) : '—'), csv: (r) => r.tech },
-  techScore: { label: 'Tech score', num: true, html: (r) => (r.techScore == null ? '—' : r.techScore.toFixed(2)), csv: (r) => r.techScore },
+  techScore: { label: 'Tech score', num: true, html: (r) => (r.techScore == null ? '—' : `<span class="${sgn(r.techScore)}">${r.techScore.toFixed(2)}</span>`), csv: (r) => r.techScore },
   rsi: { label: 'RSI (14)', num: true, html: (r) => r.rsi ?? '—', csv: (r) => r.rsi },
   sma20: { label: 'SMA 20', num: true, html: (r) => (r.sma20 == null ? '—' : money(r.sma20)), csv: (r) => r.sma20 },
   sma50: { label: 'SMA 50', num: true, html: (r) => (r.sma50 == null ? '—' : money(r.sma50)), csv: (r) => r.sma50 },
-  macd: { label: 'MACD hist', num: true, html: (r) => r.macd ?? '—', csv: (r) => r.macd },
+  macd: { label: 'MACD hist', num: true, html: (r) => (r.macd == null ? '—' : `<span class="${sgn(r.macd)}">${r.macd}</span>`), csv: (r) => r.macd },
   sentL: { label: 'Sentiment', html: (r) => (r.sentL ? (r.sentN ? badge(r.sentL, r.sentTip, toneKind(r.sentL)) : '<span class="muted" title="No recent headlines found">No news</span>') : '<span class="muted">…</span>'), csv: (r) => r.sentL },
-  sentScore: { label: 'Sentiment score', num: true, html: (r) => (r.sentScore == null ? '—' : r.sentScore.toFixed(2)), csv: (r) => r.sentScore },
+  sentScore: { label: 'Sentiment score', num: true, html: (r) => (r.sentScore == null ? '—' : `<span class="${sgn(r.sentScore)}">${r.sentScore.toFixed(2)}</span>`), csv: (r) => r.sentScore },
   sentN: { label: 'Headlines (+ / −)', num: true, html: (r) => (r.sentN ? `${r.sentN} (<span class="up">${r.sentPos}</span> / <span class="down">${r.sentNeg}</span>)` : '—'), csv: (r) => r.sentN },
   headline: { label: 'Latest headline', html: (r) => (r.headline ? `<a class="headline" href="${esc(safeUrl(r.headline.link))}" target="_blank" rel="noopener noreferrer">${esc(r.headline.title)}</a>` : '—'), csv: (r) => r.headline?.title },
   income: { label: 'Income view', html: (r) => (r.income ? badge(r.income, r.incTip, toneKind(r.income)) : '<span class="muted" title="Corporate-action data not loaded yet">…</span>'), csv: (r) => r.income },

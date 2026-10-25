@@ -14,13 +14,13 @@ Check Python: `python3 --version` (on Windows: `py --version`).
 ## 2. Install
 
 ### Option A: from the release package (recommended)
-Download `marketlens-0.2.0-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
+Download `marketlens-0.2.1-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
 
 ```bash
 shasum -a 256 -c SHA256SUMS.txt          # macOS/Linux: checks both files; "OK" for the one you downloaded
 python3 -m venv ~/marketlens-env         # a private environment keeps it separate from other Python tools
 source ~/marketlens-env/bin/activate     # Windows: %USERPROFILE%\marketlens-env\Scripts\activate
-pip install marketlens-0.2.0-py3-none-any.whl
+pip install marketlens-0.2.1-py3-none-any.whl
 marketlens
 ```
 (`shasum -c` reports "FAILED open or read" for a file you did not download; that is expected.)
@@ -91,6 +91,11 @@ Useful flags (full list: `marketlens --help`):
 
 It holds `marketlens.db` (accounts, option-chain snapshots, audit log; readable by you only), cached market snapshots
 (`*.json`), and the `option-inbox/` folder. Nothing is stored anywhere else, and no NSE data is shipped with the package.
+
+## 4b. Live data on the desktop version
+Stock quotes are requested from NSE live every minute (and fall back to the last saved snapshot, flagged Stale). The market-hours banner
+("Market open" / "Market closed") and the live option-chain spot are features of the phone app; the desktop option chain still comes from a
+CSV you import or the inbox folder.
 
 ## 5. Option chain
 NSE's website blocks automated access, so MarketLens does not download from it. Download the option-chain CSV yourself

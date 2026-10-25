@@ -1,5 +1,5 @@
 /* MarketLens app (ES module): hash-routed single page. Data: NSE via the local server. See data.js, lib.js, screener.js. */
-import { startVitals, $, $$, esc, money, signed, cls, arrow, chgPct, pos52, idxChange, fmtDate, symLink, secTag, store, api, conn, onConn, badge, toneKind, sparkline, skeleton, emptyState, errorState, safeUrl, icon } from './lib.js';
+import { startVitals, autoScrollTables, tint, sgn, $, $$, esc, money, signed, cls, arrow, chgPct, pos52, idxChange, fmtDate, symLink, secTag, store, api, conn, onConn, badge, toneKind, sparkline, skeleton, emptyState, errorState, safeUrl, icon } from './lib.js';
 
 const D = window.MLData;
 const { stocks, bySym } = D;
@@ -13,11 +13,12 @@ startVitals();
     let state = 'live', msg;
     if (conn.state === 'offline') { state = 'off'; msg = `Disconnected: ${conn.lastError || 'cannot reach the local server'}. Showing the last data received; retrying.`; }
     else if (D.stale) { state = 'stale'; msg = `Saved NSE snapshot (last session ${asOf}). The live feed is unavailable${D.retryIn ? `; next live attempt in about ${Math.ceil(D.retryIn / 60)} min` : ''}.`; }
+    else if (D.market && !D.market.live) { state = 'closed'; msg = `${D.market.label}. Showing the last update, the ${asOf} session.`; }
     else if (ageMin != null && ageMin > 10) { state = 'delayed'; msg = `Delayed: data was fetched ${Math.round(ageMin)} min ago (NSE session ${asOf}).`; }
-    else msg = `Live · NSE session ${asOf} · fetched ${at}.`;
+    else msg = D.market ? `Market open · prices update about every minute · last refresh ${at}.` : `Live · NSE session ${asOf} · fetched ${at}.`;
     if (conn.updating && state !== 'off') msg += ' Updating…';
     el.className = `banner ${state}`;
-    el.innerHTML = `<span class="dot ${state}" aria-hidden="true"></span><span><span class="state-name">${{ live: 'Live', stale: 'Stale', delayed: 'Delayed', off: 'Disconnected' }[state]}</span> ${esc(msg)} <span class="muted">Informational only, not investment advice.</span></span>`;
+    el.innerHTML = `<span class="dot ${state}" aria-hidden="true"></span><span><span class="state-name">${{ live: 'Live', closed: 'Market closed', stale: 'Stale', delayed: 'Delayed', off: 'Disconnected' }[state]}</span> ${esc(msg)} <span class="muted">Informational only, not investment advice.</span></span>`;
   }
   function paintLive() {
     $$('[data-px]').forEach((el) => { const s = bySym[el.dataset.px]; if (s) el.textContent = money(s.price); });
@@ -113,11 +114,11 @@ startVitals();
       html: `${ticker()}
       <div class="grid3">
         <section class="card lead">
-          ${lead ? `<p class="muted">Market wrap · generated from NSE data</p><h1><a href="#/updates/${lead.id}">${esc(lead.title)}</a></h1><p>${esc(lead.sum)}</p>` : ''}
-          <ul class="list">${updates.slice(1, 5).map((n) => `<li><a href="#/updates/${n.id}">${esc(n.title)}</a></li>`).join('')}</ul>
+          ${lead ? `<p class="muted">Market wrap · generated from NSE data</p><h1><a href="#/updates/${lead.id}">${tint(lead.title)}</a></h1><p>${tint(lead.sum)}</p>` : ''}
+          <ul class="list">${updates.slice(1, 5).map((n) => `<li><a href="#/updates/${n.id}">${tint(n.title)}</a></li>`).join('')}</ul>
         </section>
         <section class="card"><h2>In focus</h2>
-          <ul class="list">${updates.slice(5, 9).map((n) => `<li><a href="#/updates/${n.id}">${esc(n.title)}</a></li>`).join('') || '<li class="muted">No further updates.</li>'}</ul>
+          <ul class="list">${updates.slice(5, 9).map((n) => `<li><a href="#/updates/${n.id}">${tint(n.title)}</a></li>`).join('') || '<li class="muted">No further updates.</li>'}</ul>
           <a class="more" href="#/updates">All updates »</a></section>
         <aside class="card"><h2>Sector indices</h2>
           <div class="heat">${D.sectorIdx.map((s) => `<div class="tile ${cls(s.pct)}-bg" title="${esc(s.index)}"><b>${esc(s.sector)}</b><span>${signed(s.pct)}%</span></div>`).join('') || '<p class="muted">Unavailable.</p>'}</div>
@@ -221,6 +222,7 @@ startVitals();
       after() {
         const form = $('#oc-form'), msg = $('#oc-msg');
         const n = (v, dp = 0) => (v == null ? '—' : money(v, dp));
+        const chg = (v) => (v == null ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${money(Math.abs(v), 0)}`);   // signed, so the colour is not the only cue
         const loadMeta = () => api('/api/options/meta').then((m) => {
           const s = m.scheduler || {};
           if (m.auto) {   // the app fetches the data itself: no upload needed; manual import stays available but tucked away
@@ -250,13 +252,13 @@ startVitals();
             const S = d.summary, maxOi = Math.max(1, ...d.rows.map((r) => Math.max(r.ce?.oi || 0, r.pe?.oi || 0)));
             const bar = (v, c) => `style="background:linear-gradient(to ${c === 'ce' ? 'left' : 'right'},var(--${c === 'ce' ? 'down' : 'up'}-bg) ${((v || 0) / maxOi) * 100}%,transparent 0)"`;
             const m = d.meta || {};
-            $('#oc-body').innerHTML = `<p class="muted">${esc(d.symbol || s)} · expiry ${esc(d.expiry || '—')} · source: ${m.tradeDate ? `NSE end-of-day file, trading day ${esc(fmtDate(m.tradeDate))}` : esc(m.source || d.tool || '—')}${m.filename && !m.tradeDate ? ` (${esc(m.filename)})` : ''}${m.capturedAt ? ` · captured ${esc(ageText(m.capturedAt))}` : ''}${d.warning ? ` · <span class="down">${esc(d.warning)}</span>` : ''}</p>
-              <div class="stats"><div class="stat"><span class="muted">Spot${d.spotEstimated ? ' (estimated from put-call parity)' : ''}</span><b>${n(d.spot, 2)}</b></div><div class="stat"><span class="muted">PCR (put/call OI)</span><b>${S.pcr ?? '—'}</b></div>
+            $('#oc-body').innerHTML = `<p class="muted">${esc(d.symbol || s)} · expiry ${esc(d.expiry || '—')} · source: ${m.tradeDate ? `contracts: NSE end-of-day file, trading day ${esc(fmtDate(m.tradeDate))}${d.spotLive ? ' · spot: live' : ''}` : esc(m.source || d.tool || '—')}${m.filename && !m.tradeDate ? ` (${esc(m.filename)})` : ''}${m.capturedAt ? ` · captured ${esc(ageText(m.capturedAt))}` : ''}${d.warning ? ` · <span class="down">${esc(d.warning)}</span>` : ''}</p>
+              <div class="stats"><div class="stat"><span class="muted">Spot${d.spotLive ? ' (live)' : d.spotEstimated ? ' (estimated from put-call parity)' : ''}</span><b>${n(d.spot, 2)}</b></div><div class="stat"><span class="muted">PCR (put/call OI)</span><b>${S.pcr ?? '—'}</b></div>
               <div class="stat"><span class="muted">Max pain</span><b>${n(S.maxPain)}</b></div><div class="stat"><span class="muted">Call OI · Put OI</span><b>${n(S.ceOi)} · ${n(S.peOi)}</b></div></div>
               <section class="card"><div class="scroll"><table class="tbl oc"><thead><tr><th colspan="5" class="num">CALLS</th><th class="num">Strike</th><th colspan="5">PUTS</th></tr>
               <tr><th class="num">OI</th><th class="num">Chg OI</th><th class="num">Vol</th><th class="num">IV</th><th class="num">LTP</th><th></th><th class="num">LTP</th><th class="num">IV</th><th class="num">Vol</th><th class="num">Chg OI</th><th class="num">OI</th></tr></thead><tbody>
-              ${d.rows.map((r) => { const c = r.ce || {}, p = r.pe || {}; return `<tr class="${r.strike === S.atm ? 'atm' : ''}"><td class="num" ${bar(c.oi, 'ce')}>${n(c.oi)}</td><td class="num">${n(c.chgOi)}</td><td class="num">${n(c.vol)}</td><td class="num">${n(c.iv, 1)}</td><td class="num">${n(c.ltp, 2)}</td>
-                <td class="num strike">${n(r.strike)}</td><td class="num">${n(p.ltp, 2)}</td><td class="num">${n(p.iv, 1)}</td><td class="num">${n(p.vol)}</td><td class="num">${n(p.chgOi)}</td><td class="num" ${bar(p.oi, 'pe')}>${n(p.oi)}</td></tr>`; }).join('')}</tbody></table></div>${m.tradeDate ? '<p class="muted pad">End-of-day figures: LTP is the closing price. NSE’s file has no implied volatility or bid/ask, so those show as —.</p>' : ''}</section>`;
+              ${d.rows.map((r) => { const c = r.ce || {}, p = r.pe || {}; return `<tr class="${r.strike === S.atm ? 'atm' : ''}"><td class="num" ${bar(c.oi, 'ce')}>${n(c.oi)}</td><td class="num ${sgn(c.chgOi)}">${chg(c.chgOi)}</td><td class="num">${n(c.vol)}</td><td class="num">${n(c.iv, 1)}</td><td class="num">${n(c.ltp, 2)}</td>
+                <td class="num strike">${n(r.strike)}</td><td class="num">${n(p.ltp, 2)}</td><td class="num">${n(p.iv, 1)}</td><td class="num">${n(p.vol)}</td><td class="num ${sgn(p.chgOi)}">${chg(p.chgOi)}</td><td class="num" ${bar(p.oi, 'pe')}>${n(p.oi)}</td></tr>`; }).join('')}</tbody></table></div>${m.tradeDate ? `<p class="muted pad">Contract figures (open interest, LTP = closing price) are from NSE’s last published end-of-day file; NSE does not publish a free live option feed.${d.spotLive ? ' Only the spot price and the at-the-money row are live.' : ''} It has no implied volatility or bid/ask, so those show as —.</p>` : ''}</section>`;
           }).catch((err) => { $('#oc-body').innerHTML = `<section class="card"><p>Could not load the option chain.</p><p class="muted">${esc(err.message)}</p></section>`; });
         };
         form.addEventListener('submit', (ev) => { ev.preventDefault(); loadChain(); });
@@ -288,8 +290,8 @@ startVitals();
     if (id) {
       const n = updates.find((x) => x.id === +id);
       if (!n) return views.notfound();
-      return { html: `<article class="card article"><p class="muted">${esc(n.cat)} · generated from NSE data, ${D.asOf ? fmtDate(D.asOf) : ''}</p><h1>${esc(n.title)}</h1>
-        ${n.body.filter(Boolean).map((p) => `<p>${esc(p)}</p>`).join('')}
+      return { html: `<article class="card article"><p class="muted">${esc(n.cat)} · generated from NSE data, ${D.asOf ? fmtDate(D.asOf) : ''}</p><h1>${tint(n.title)}</h1>
+        ${n.body.filter(Boolean).map((p) => `<p>${tint(p)}</p>`).join('')}
         ${n.related.length ? `<h3>Related stocks</h3><ul class="list">${n.related.filter((r) => bySym[r]).map((r) => `<li>${symLink(bySym[r])}</li>`).join('')}</ul>` : ''}
         <p class="muted">These items are produced automatically from NSE figures. They are not editorial news.</p><a class="more" href="#/updates">« All updates</a></article>` };
     }
@@ -298,7 +300,7 @@ startVitals();
     return {
       html: `<h1>Market updates</h1><p class="muted">Generated from NSE data for the ${D.asOf ? fmtDate(D.asOf) : 'last'} session. NSE’s data feeds do not include news articles.</p>
         <div class="tabs" id="news-cats">${cats.map((c) => `<button data-c="${c}" class="${c === cat ? 'on' : ''}">${esc(c)}</button>`).join('')}</div>
-        <section class="card"><ul class="list big">${updates.filter((n) => cat === 'all' || n.cat === cat).map((n) => `<li><a href="#/updates/${n.id}">${esc(n.title)}</a><p class="muted">${esc(n.sum)}</p></li>`).join('')}</ul></section>`,
+        <section class="card"><ul class="list big">${updates.filter((n) => cat === 'all' || n.cat === cat).map((n) => `<li><a href="#/updates/${n.id}">${tint(n.title)}</a><p class="muted">${tint(n.sum)}</p></li>`).join('')}</ul></section>`,
       after() { $$('#news-cats button').forEach((b) => b.addEventListener('click', () => { store.set('ml.newscat', b.dataset.c); route(); })); },
     };
   };
@@ -385,7 +387,7 @@ startVitals();
     let body = '';
     if (tab === 'overview') {
       const rows = [['Last price', money(price)], ['Previous close', money(q.preClosePrice)], ['Open', money(q.openPrice)], ['Day high', money(q.highPrice)], ['Day low', money(q.lowPrice)],
-        ['Volume', q.volume?.toLocaleString('en-IN')], ['Turnover', q.value != null ? `₹${money(q.value, 0)} cr` : '—'], ['30-day change', q.perChange30d == null ? '—' : `${signed(q.perChange30d)}%`],
+        ['Volume', q.volume?.toLocaleString('en-IN')], ['Turnover', q.value != null ? `₹${money(q.value, 0)} cr` : '—'], ['30-day change', q.perChange30d == null ? '—' : `<span class="${cls(q.perChange30d)}">${signed(q.perChange30d)}%</span>`],
         ['52-week high', `${money(q.fiftyTwoWeekHigh)}${r52['52w_high_date'] ? ` (${fmtDate(r52['52w_high_date'])})` : ''}`], ['52-week low', `${money(q.fiftyTwoWeekLow)}${r52['52w_low_date'] ? ` (${fmtDate(r52['52w_low_date'])})` : ''}`],
         ['Position in 52w range', r52.position_in_range_pct != null ? `${r52.position_in_range_pct}%` : '—'], ['Dividends, last 12 months', d.divTtm ? `₹${money(d.divTtm)}${yld ? ` (${yld}% yield)` : ''}` : 'None found']];
       const peers = stocks.filter((p) => p.sector === (u && u.sector) && p.sym !== sym && p.sector !== 'Other').slice(0, 5);
@@ -458,7 +460,7 @@ startVitals();
   function wireSearch() {
     const input = $('#q'), box = $('#suggest'); let timer = null, seq = 0;
     const show = (html) => { box.innerHTML = html; box.classList.remove('hide'); };
-    const item = (x) => `<a href="#/quote/${encodeURIComponent(x.symbol)}"><b>${esc(x.symbol)}</b> <span class="muted">${x.last_close != null ? money(x.last_close) : ''}${x.pct_change != null ? ` · ${signed(x.pct_change)}%` : ''}${x.source === 'nse' ? ' · NSE' : ''}</span></a>`;
+    const item = (x) => `<a href="#/quote/${encodeURIComponent(x.symbol)}"><b>${esc(x.symbol)}</b> <span class="muted">${x.last_close != null ? money(x.last_close) : ''}${x.pct_change != null ? ` · <span class="${cls(x.pct_change)}">${signed(x.pct_change)}%</span>` : ''}${x.source === 'nse' ? ' · NSE' : ''}</span></a>`;
     const goto = (sym) => { location.hash = `#/quote/${encodeURIComponent(sym)}`; input.value = ''; box.classList.add('hide'); };
     input.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
@@ -527,6 +529,7 @@ startVitals();
   }
   onConn(() => paintBanner());
   setInterval(paintBanner, 30000);
+  autoScrollTables(document.getElementById('app'));
   window.addEventListener('hashchange', route);
   window.addEventListener('resize', drawQuoteChart);
   route();

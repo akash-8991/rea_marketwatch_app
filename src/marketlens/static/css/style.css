@@ -7,6 +7,7 @@
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;   /* no font downloads */
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --fs-xs: .75rem; --fs-sm: .8125rem; --fs-base: .9375rem; --fs-md: 1rem; --fs-lg: 1.125rem;
+  --fs-news: .875rem;   /* news and updates: one step below body text */
   --fs-xl: clamp(1.25rem, 1.05rem + .8vw, 1.5rem); --fs-2xl: clamp(1.5rem, 1.15rem + 1.4vw, 2rem);
   --lh-tight: 1.25; --lh-base: 1.5;
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-5: 1.5rem; --space-6: 2rem;
@@ -115,6 +116,9 @@ label { color: var(--text-2); font-size: var(--fs-sm); }
 .tbl td, .tbl tbody th { padding: var(--space-2); border-bottom: 1px solid var(--border); font-weight: 400; text-transform: none; letter-spacing: 0; font-size: var(--fs-base); color: var(--text); }
 .tbl tr:last-child td { border-bottom: 0; }
 .tbl.kv td:first-child { color: var(--text-muted); }
+/* Table text never wraps; tables scroll sideways inside their .scroll box instead (added automatically, see autoScrollTables). */
+.tbl th, .tbl td { white-space: nowrap; }
+.tbl .headline { display: inline-block; max-width: 26rem; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .sec { display: block; font-size: var(--fs-xs); }
 .tabs, .subtabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .tabs button { border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2); border-radius: 999px; height: var(--ctl-h-sm); padding-inline: var(--space-4); text-transform: capitalize; font: inherit; cursor: pointer; }
@@ -127,8 +131,13 @@ label { color: var(--text-2); font-size: var(--fs-sm); }
 .list li { padding: var(--space-2) 0; border-top: 1px solid var(--border); }
 .list li:first-child { border-top: 0; }
 .list.big li { padding: var(--space-3) 0; } .list.big p { margin: var(--space-1) 0 0; }
+/* News and market updates: medium-size text (headlines and generated articles), meta lines smaller */
+.list.big li > a { font-size: var(--fs-news); line-height: 1.4; }
+.list.big p { font-size: var(--fs-sm); }
+.lead h1 { font-size: var(--fs-lg); line-height: 1.3; } .lead p, .lead .list a { font-size: var(--fs-news); }
+.article h1 { font-size: var(--fs-lg); line-height: 1.3; } .article p, .article li { font-size: var(--fs-news); }
 .more { display: inline-block; margin-top: var(--space-2); color: var(--brand); font-weight: 600; }
-.lead h1 { font-size: var(--fs-xl); }
+
 .ticker { display: flex; gap: var(--space-5); overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); }
 .tick { display: flex; flex-direction: column; min-width: 9rem; } .tick:hover { text-decoration: none; }
 .tname { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); font-weight: 700; }
@@ -153,9 +162,11 @@ label { color: var(--text-2); font-size: var(--fs-sm); }
 .tbl.oc .strike { background: var(--surface-2); font-weight: 700; text-align: center; }
 .banner { min-height: 2.75rem; display: flex; gap: var(--space-2); align-items: flex-start; margin-top: var(--space-3); padding: var(--space-2) var(--space-3); font-size: var(--fs-sm); color: var(--text-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
 .banner.stale, .banner.delayed { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-text); }
+.banner.closed { background: var(--surface-2); color: var(--text-2); border-color: var(--border-strong); }
 .banner.off { background: var(--down-bg); color: var(--down); border-color: var(--down); }
 .banner .muted { color: inherit; opacity: .85; } .state-name { font-weight: 700; }
 .dot { flex: none; width: .6rem; height: .6rem; margin-top: .4rem; border-radius: 50%; background: var(--up); }
+.dot.closed { background: var(--text-muted); }
 .dot.stale, .dot.delayed { background: var(--warn-text); } .dot.off { background: var(--down); }
 .skeleton { display: grid; align-content: start; gap: var(--space-3); padding: var(--space-4); min-height: 60vh; }
 .sk-row { height: 1rem; width: var(--w, 90%); border-radius: var(--radius-sm); background: linear-gradient(90deg, var(--surface-2), var(--border), var(--surface-2)); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }

@@ -9,6 +9,8 @@ import { News } from './news.js';
 import { NseClient, UpstreamBlocked } from './nse.js';
 import { BhavcopySource, INDEX_SYMBOLS } from './bhavcopy.js';
 import { OptionFeed } from './optionfeed.js';
+import { inSessionHours, lastSessionDate, marketState } from './marketclock.js';
+import { summarize } from './options.js';
 
 export const VERSION = '0.3.0-mobile';
 const MAX_UPLOAD = 2_000_000;
@@ -36,9 +38,21 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
 
   /** Stale-while-revalidate: if anything is saved, answer from it AT ONCE and refresh behind the scenes (the UI polls again
    * while `refreshing` is true). Only a first run with nothing saved waits for NSE. */
+  const ttl = (open, closed) => (inSessionHours(now()) ? open : closed);   // data only changes while the market trades
+
+  /** What the live overlay should do after a base refresh: keep refreshing during the session; after the close fetch once so the
+   * "last update" is the real close rather than a half-day-old end-of-day file; never repeat that catch-up for the same day. */
+  function maybeStartLive(boot) {
+    const syms = boot.stocks.map((s) => s.sym), t = now();
+    if (inSessionHours(t)) return market.startLive(syms, null);
+    const last = lastSessionDate(t), newest = boot.stocks.reduce((m, x) => ((x.ts || '').slice(0, 10) > m ? x.ts.slice(0, 10) : m), '');
+    if (boot.liveCheckedFor === last || market.live.checkedFor === last || newest >= last) return false;
+    return market.startLive(syms, last);
+  }
+
   function revalidate() {
     if (!bootRefresh) {
-      bootRefresh = cache.cached('bootstrap', 60, () => market.buildBootstrap()).then(() => ({ ok: true }), (e) => ({ ok: false, error: e })).then((r) => { bootRefresh = null; lastBoot = r; return r; });
+      bootRefresh = cache.cached('bootstrap', ttl(60, 1800), async () => { const b = await market.buildBootstrap(); maybeStartLive(b); return b; }).then(() => ({ ok: true }), (e) => ({ ok: false, error: e })).then((r) => { bootRefresh = null; lastBoot = r; return r; });
     }
     return bootRefresh;
   }
@@ -71,6 +85,10 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
     }
     boot.offline = cfg.offline;
     boot = await withExtras(boot);
+    boot.stocks = market.mergeLive(boot.stocks);
+    if (market.live.job.state === 'running') boot.refreshing = true;
+    const seen = market.live.received ? market.liveSeen() : { received: 0, newest: boot.stocks.reduce((m, x) => ((x.ts || '') > m ? x.ts : m), '') };
+    boot.market = marketState(now(), seen);
     boot.stocks = boot.stocks.map((s) => ({ ...s, techSnap: analysis.technicalSnapshot(s) }));
     return boot;
   }
@@ -84,7 +102,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
 
   async function stockPayload(sym) {
     let d;
-    try { d = { ...(await cache.cached('stock:' + sym, 300, () => market.stockDetail(sym))), stale: false }; } catch (e) {
+    try { d = { ...(await cache.cached('stock:' + sym, ttl(60, 900), () => market.stockDetail(sym))), stale: false }; } catch (e) {
       d = await snaps.get('stock-' + sym);
       if (!d) throw e;
       d = { ...d, stale: true, staleReason: String(e.message).slice(0, 200) };
@@ -96,9 +114,23 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
 
   const configPayload = () => ({ offline: cfg.offline, news: cfg.news, loginRequired: cfg.requireLogin, options: optionsStatus(), version: VERSION, rules: analysis.RULES, rateLimits: null, platform: 'mobile' });
 
+  const INDEX_NAME = { NIFTY: 'NIFTY 50', BANKNIFTY: 'NIFTY BANK', NIFTYNXT50: 'NIFTY NEXT 50', FINNIFTY: 'NIFTY FIN SERVICE', MIDCPNIFTY: 'NIFTY MID SELECT' };
+
+  /** Live underlying level while the market trades. The contract data (open interest, prices) is the last file NSE published. */
+  async function liveSpot(sym) {
+    if (!nse.available() || !marketState(now(), market.live.received ? market.liveSeen() : {}).live) return null;
+    try {
+      if (INDEX_NAME[sym]) return await market.indexLevel(INDEX_NAME[sym]);
+      const r = await cache.cached('spot:' + sym, 60, () => nse.cm('cm_get_stock_quote', { symbol: sym }));
+      return (r.stock && r.stock.lastTradedPrice) || null;
+    } catch (e) { return null; }
+  }
+
   async function optionChain(symbol, expiry) {
     const sym = (symbol || 'NIFTY').toUpperCase();
-    const snap = await feed.chain(sym, expiry);
+    let snap = await feed.chain(sym, expiry);
+    const sp = snap ? await liveSpot(sym) : null;
+    if (snap && sp) snap = { ...snap, spot: sp, spotLive: true, spotEstimated: false, summary: summarize(snap.rows, sp) };
     const st = feed.status();
     const failed = /^could not/.test(st.result);
     if (snap) return { ...snap, available: true, tool: 'NSE end-of-day file', warning: failed ? `${st.result}; showing what was saved earlier` : null, feed: st };

@@ -83,4 +83,6 @@ flowchart LR
 | One bulk quote, one extras job at two lanes | requests are the cost: 19 for a cold home page instead of hundreds |
 | Retry on the same MCP session | a misrouted call (404) costs 1 request, not a new 3-request session |
 | Option chain from NSE's published end-of-day file | NSE's live option-chain API is protected against automated clients, so it is not used and no browser is imitated; the archive file is a legitimate download. The cost: end-of-day data, no implied volatility |
+| Market clock as pure functions (`marketclock.js`) | "live or last update" is decided in one place, tested at the edges; holidays are inferred from quote dates because the app has no exchange calendar |
+| Live prices as an overlay on the end-of-day base | the bulk call paints the page at once; per-stock live quotes replace values as they arrive; a refresh never replaces newer data with older |
 | Freshness policy in one class (`OptionFeed`) | single-flight, 20-minute cooldown, always falls back to saved data; the UI never waits on a retry loop |

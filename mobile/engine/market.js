@@ -32,6 +32,7 @@ export class Market {
     Object.assign(this, { nse, snaps, cache, now });
     this.universeSize = settings.universeSize || 60;
     this.extrasJob = { state: 'idle', done: 0, total: 0 };
+    this.live = { quotes: {}, received: 0, newest: '', job: { state: 'idle', done: 0, total: 0 }, checkedFor: null };
   }
 
   async corpActions(sym, years = 2) {
@@ -61,6 +62,9 @@ export class Market {
       valueCr: turnover[q.symbol] != null ? analysis.pyRound(turnover[q.symbol] / 1e7, 2) : null, hi52: null, lo52: null, pct30: null, ts: q.date,
     })).sort((a, b) => syms.indexOf(a.sym) - syms.indexOf(b.sym));
     if (!stocks.length) throw new Error('no quotes returned from NSE MCP');
+    // Never replace newer data with older: the end-of-day bulk file can be a day behind the live quotes saved earlier.
+    const prev = (await this.snaps.get('bootstrap')) || {}, prevBy = Object.fromEntries((prev.stocks || []).map((x) => [x.sym, x]));
+    for (let i = 0; i < stocks.length; i++) { const p = prevBy[stocks[i].sym]; if (p && (p.ts || '') > (stocks[i].ts || '')) stocks[i] = { ...stocks[i], ...p }; }
 
     const idxRow = (name) => {
       const k = name.toUpperCase(), lv = liveIdx[k] || {}, sn = snapIdx[k] || {};
@@ -74,10 +78,52 @@ export class Market {
       asOf: mood.date || breadth.date, nseTimestamp: live.nseTimestamp, fetchedAt: this.now().toISOString().slice(0, 19),
       indices: HEADLINE_INDICES.filter((x) => x in liveIdx || x in snapIdx).map(idxRow),
       valuation: Object.keys(snapIdx).filter((k) => snapIdx[k].pe).slice(0, 120).map(idxRow),
-      sectorIndices: sectorIdx, mood, breadth, stocks, sectorSource: 'static classification (not provided by NSE)',
+      sectorIndices: sectorIdx, mood, breadth, stocks, sectorSource: 'static classification (not provided by NSE)', liveCheckedFor: prev.liveCheckedFor ?? null,
     };
     await this.snaps.put('bootstrap', boot);
     return boot;
+  }
+
+  /* live overlay: real-time quotes, one stock at a time on two lanes (NSE has no multi-symbol live call: its bulk call is end-of-day) */
+  liveSeen() { return { received: this.live.received, newest: this.live.newest }; }
+
+  /** Fetch live quotes for `syms` in the background; `checkedFor` marks a one-off catch-up (after the close) so it is not repeated. */
+  startLive(syms, checkedFor = null) {
+    if (!syms.length || !this.nse.available() || this.live.job.state === 'running') return false;
+    const job = (this.live.job = { state: 'running', done: 0, total: syms.length });
+    (async () => {
+      const queue = [...syms];   // most-traded first, so the top of every list is live soonest
+      const one = async (sym) => {
+        const r = await opt(this.nse.cm('cm_get_stock_quote', { symbol: sym }), null), q = r && r.stock;
+        if (q && q.lastTradedPrice) {
+          this.live.quotes[sym] = { price: q.lastTradedPrice, prev: q.preClosePrice, open: q.openPrice, high: q.highPrice, low: q.lowPrice, volume: q.volume,
+            valueCr: q.value, hi52: q.fiftyTwoWeekHigh ?? null, lo52: q.fiftyTwoWeekLow ?? null, pct30: q.perChange30d ?? null, ts: q.latestTimestamp };
+          this.live.received++;
+          if ((q.latestTimestamp || '') > this.live.newest) this.live.newest = q.latestTimestamp;
+        }
+        job.done++;
+      };
+      await Promise.all([0, 1].map(async () => { while (queue.length && this.nse.available()) await one(queue.shift()); }));
+      this.live.checkedFor = checkedFor;
+      const snap = await this.snaps.get('bootstrap');   // keep the saved copy current: next time the market is closed, "last update" is the real close
+      if (snap) await this.snaps.put('bootstrap', { ...snap, stocks: this.mergeLive(snap.stocks), liveCheckedFor: checkedFor });
+      job.state = 'idle';
+    })();
+    return true;
+  }
+
+  mergeLive(stocks) {
+    return stocks.map((s) => {
+      const q = this.live.quotes[s.sym];
+      return q ? { ...s, ...q, hi52: q.hi52 ?? s.hi52, lo52: q.lo52 ?? s.lo52, pct30: q.pct30 ?? s.pct30 } : s;
+    });
+  }
+
+  /** Live level of an index by NSE's name, cached for a minute. */
+  async indexLevel(name) {
+    const r = await this.cache.cached('liveidx', 60, () => this.nse.cm('cm_get_live_indices', { group: '', nameFilter: '' }));
+    for (const group of Object.values(r.indices || {})) for (const i of group) if (i.indexName.toUpperCase() === name) return i.last ?? null;
+    return null;
   }
 
   /* extras: price history and corporate actions for every tracked stock. Runs only while the app is open. */

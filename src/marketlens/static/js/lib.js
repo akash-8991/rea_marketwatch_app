@@ -17,6 +17,13 @@ export const fmtDate = (d) => { try { return new Date(d + 'T00:00:00').toLocaleD
 export const compact = (n) => (n == null ? '—' : Math.abs(n) >= 1e7 ? `${(n / 1e7).toFixed(2)} Cr` : Math.abs(n) >= 1e5 ? `${(n / 1e5).toFixed(2)} L` : Math.abs(n) >= 1e3 ? `${(n / 1e3).toFixed(1)} K` : String(Math.round(n)));
 export const symLink = (s) => `<a href="#/quote/${encodeURIComponent(s.sym)}">${esc(s.sym)}</a>`;
 export const secTag = (s) => (s.sector && s.sector !== 'Other' ? `<span class="muted sec">${esc(s.sector)}</span>` : '');
+/** 'up' / 'down' / '' by sign (zero stays neutral). cls() above treats zero as up and is kept for existing callers. */
+export const sgn = (n) => (n > 0 ? 'up' : n < 0 ? 'down' : '');
+/** Escape text and colour what it says about movement: signed numbers (+1.2%, −87.65) and "gains/rose/up 0.4%" vs "slips/fell/down 0.4%". */
+export const tint = (text) => esc(text)
+  .replace(/\b(gains|gained|rises|rose|climbs|jumps|advances|surges|up|higher)\s+([\d,.]+%)/gi, '<span class="up">$1 $2</span>')
+  .replace(/\b(slips|slipped|falls|fell|drops|declines|sheds|dips|down|lower)\s+([\d,.]+%)/gi, '<span class="down">$1 $2</span>')
+  .replace(/(^|[\s(])([+−])(\d[\d,]*(?:\.\d+)?%?)/g, (m, pre, sign, num) => `${pre}<span class="${sign === '+' ? 'up' : 'down'}">${sign}${num}</span>`);
 export const safeUrl = (u) => (/^https?:\/\//i.test(u) ? u : '#');
 
 /* ---------- storage (every access guarded: it can be blocked or full) ---------- */
@@ -125,4 +132,18 @@ export function startVitals() {
     sent = true;
     fetch('/api/vitals', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'text/plain', 'X-Requested-With': 'MarketLens' }, body: JSON.stringify(v) }).catch(() => {});
   });
+}
+
+/** Tables never wrap their text (see .tbl in style.css), so each one lives in a horizontally scrolling box. Wrapping is done once, here,
+ * for every table that appears under `root` (including ones rendered later by async views), instead of in every template. */
+export function autoScrollTables(root) {
+  const wrap = (t) => {
+    if (t.parentElement && !t.parentElement.classList.contains('scroll')) {
+      const box = document.createElement('div'); box.className = 'scroll';
+      t.parentElement.insertBefore(box, t); box.appendChild(t);
+    }
+  };
+  const sweep = () => root.querySelectorAll('table.tbl').forEach(wrap);
+  sweep();
+  new MutationObserver(sweep).observe(root, { childList: true, subtree: true });
 }

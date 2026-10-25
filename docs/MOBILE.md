@@ -40,6 +40,23 @@ Loading is built around three rules, measured against live NSE:
   connections open and simply retries on the same session (1 request) instead of starting over (3 requests). The 52-week range and
   30-day change fill in a few seconds later, from a background job that runs two requests at a time (never more, to stay polite to NSE).
 
+## 2c. Live during market hours, last update otherwise
+| When | Stock prices, indices, movers | Option chain |
+|---|---|---|
+| **Market open** (Mon-Fri 09:15-15:30 India time) | live quotes from NSE, refreshed about every minute while the app is open; the banner reads "Market open" | contracts (open interest, closing prices) from NSE's last published end-of-day file; **spot price and the at-the-money row are live** |
+| **Closed** (evenings, nights, weekends, before the open) | the last update of the day, i.e. that session's close; the banner reads "Market closed for the day / weekend / opens at 9:15 am". After the close the app makes one catch-up fetch so the close is real, then stays quiet (data is re-checked at most every 30 minutes) | the last published end-of-day file; spot as in that file |
+| **A weekday holiday** | recognised because NSE's quotes still carry the previous trading day's date; the banner says "No trading today (exchange holiday?)" | as above |
+
+NSE publishes no free live option feed, and its live option-chain page cannot be used by an app without imitating a browser, so the
+option contracts themselves cannot be live. This is stated on the screen. Live prices cost one request per stock (NSE has no multi-stock
+live call), made two at a time, so they arrive over a few seconds with the most-traded stocks first.
+
+## 2d. Reading the screens
+- **Green and red:** every increase is green and every decrease red (prices, changes, 30-day moves, change in open interest,
+  score signs, and the figures in generated market updates). Signed values also carry a "+" or "−", so colour is never the only cue.
+- **Tables never wrap.** Text stays on one line and a wide table scrolls sideways inside its own box; the page itself never scrolls sideways.
+- **News and updates** use a medium text size (headlines 14 px, meta lines 13 px, update headlines 18 px).
+
 ## 3. What is different from the desktop app
 - **Foreground only.** The app refreshes while it is open. Android does not let it run in the background, so there is no
   2.5-minute background download. The option chain checks for a newer file when you open the screen, at most every 20 minutes.
@@ -138,6 +155,11 @@ not a standalone app and the desktop server is deliberately bound to `127.0.0.1`
   Home, Markets, Screener, Stock page, and the Option chain loading by itself from a real excerpt of NSE's 23-Oct-2026 file.
 - Speed, with tests: one bulk quote instead of per-stock calls, session reuse under a 60% misroute rate, answering at once while
   NSE hangs. A live cold load of the home page took about 2.3 s (one measurement, one network; yours will differ).
+- Market hours: the clock rules (session edges, weekends, holiday recognition) and a simulated trading day: live prices move on the next
+  refresh, nothing is re-fetched inside the minute, the close is fetched once and kept, a holiday is not shown as "Live", and the option
+  chain's spot and at-the-money row follow the live price. One bug found and fixed by these tests: a refresh could overwrite the saved
+  close with the older end-of-day file.
+- Layout at phone width on eight screens: every table inside a scrolling box, no wrapped table text, no sideways page scroll.
 - Phone layout: the header starts at least 1 cm below the top edge and moves further down under a larger cut-out or status bar
   (checked by simulating insets; see the next list for what is not checked).
 
