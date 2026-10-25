@@ -4,7 +4,7 @@ Everything users download is built on GitHub; nobody needs a build machine.
 
 | Artifact | Workflow | Trigger | Where it ends up |
 |---|---|---|---|
-| Android app `.apk` + `.sha256` | `android.yml` | tag `mobile-vX.Y.Z` (build only: push to `mobile-app`, manual run) | GitHub **Release** for the tag **and** `downloads/MarketLens-android.apk` on `main` (the direct-download link); run artifact otherwise |
+| Android app `.apk` (checksum in `downloads/checksums/`) | `android.yml` | tag `mobile-vX.Y.Z` (build only: push to `mobile-app`, manual run) | GitHub **Release** for the tag **and** `downloads/MarketLens-android.apk` on `main` (the direct-download link); run artifact otherwise |
 | Container image | `container.yml` | push to `main` (`:latest`), tag `vX.Y.Z` (`:X.Y.Z`, `:X.Y`) | `ghcr.io/akash-8991/rea_marketwatch_app` (Packages) |
 | Python wheel + sdist | built by hand: `python -m pip wheel . --no-deps -w dist` | version bump | `dist/` in the repository (with `SHA256SUMS.txt`) |
 
@@ -32,7 +32,7 @@ The Android version code is the workflow run number, so each build can update th
 ## Checking a build
 - **Actions tab**: both workflows should be green; the APK job prints the file's size, checksum and permissions
   (only `INTERNET` is expected).
-- **Release**: the `.apk` and `.apk.sha256` are attached; verify with `shasum -a 256 -c`.
+- **Release**: the `.apk` is attached; verify with `cd downloads && shasum -a 256 -c checksums/MarketLens-android.apk.sha256`.
 - **Container**: `docker run --rm -p 127.0.0.1:8080:8080 ghcr.io/akash-8991/rea_marketwatch_app:<tag>`; the workflow already
   smoke-tests health, the sign-up page, an account creation and the non-root user before publishing.
 

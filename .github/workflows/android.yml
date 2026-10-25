@@ -98,7 +98,8 @@ jobs:
           git fetch --no-tags origin main && git checkout -B main origin/main
           mkdir -p downloads
           cp "mobile/${{ steps.pack.outputs.apk }}" downloads/MarketLens-android.apk
-          (cd downloads && sha256sum MarketLens-android.apk > MarketLens-android.apk.sha256)
+          mkdir -p downloads/checksums
+          (cd downloads && sha256sum MarketLens-android.apk > checksums/MarketLens-android.apk.sha256)
           git add downloads
           git commit -m "Android app ${GITHUB_REF_NAME#mobile-v}: update downloads/MarketLens-android.apk" || echo "nothing to commit"
           git push origin main
@@ -108,5 +109,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --title "MarketLens for Android ${GITHUB_REF_NAME#mobile-v}" \
-            --notes "Debug-signed APK for sideloading. Install steps and limits: docs/MOBILE.md. Verify with the .sha256 file." \
-            "mobile/${{ steps.pack.outputs.apk }}" "mobile/${{ steps.pack.outputs.apk }}.sha256"
+            --notes "Debug-signed APK for sideloading. Install steps and limits: docs/MOBILE.md. Checksum: downloads/checksums/ in the repository." \
+            "mobile/${{ steps.pack.outputs.apk }}"
