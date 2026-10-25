@@ -21,14 +21,25 @@ Python standard library.
 
 > Informational only. Not investment advice. All scores are simple rules, not predictions.
 
-**Full installation and deployment guide: [docs/INSTALL.md](docs/INSTALL.md)** (install options, data locations, running
-in the background, upgrade and backup, troubleshooting).
+## Get the app (pick one)
 
-## Phone app (Android)
-A standalone Android app (no computer or server needed) is built from the same web interface plus a JavaScript copy of
-the engine: **[docs/MOBILE.md](docs/MOBILE.md)** covers installing the `.apk` from a GitHub Release, what differs from the
-desktop version, limits, building it yourself, and the iPhone plan (iPhone is not built yet; it needs a Mac with Xcode).
-It has not been run on a real phone yet; the doc lists exactly what has and has not been verified.
+| You have | Do this | Time |
+|---|---|---|
+| **An Android phone** | Open the repository's [Releases](https://github.com/akash-8991/rea_marketwatch_app/releases) page on the phone, download `MarketLens-<version>-android.apk`, open it, allow the install, create an account. Standalone: no computer needed. Details: [docs/MOBILE.md](docs/MOBILE.md). | 2 min |
+| **Docker** | `docker run -d --name marketlens -p 127.0.0.1:8080:8080 -v marketlens-data:/data ghcr.io/akash-8991/rea_marketwatch_app:latest`, then open <http://127.0.0.1:8080>. Or use [docker-compose.yml](docker-compose.yml). | 1 min |
+| **Python 3.9+** | `pip install marketlens-0.2.0-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
+| **An iPhone** | Not available yet; needs a Mac with Xcode to build. See [docs/MOBILE.md](docs/MOBILE.md), section 7. | |
+
+The first screen asks you to create an account; after that you sign in with your user ID and password. Everything is
+stored on your own device (phone storage, the container's `/data` volume, or your user data folder).
+
+Guides: **[docs/INSTALL.md](docs/INSTALL.md)** (install, containers, background running, upgrade, backup, troubleshooting),
+**[docs/MOBILE.md](docs/MOBILE.md)** (Android app), **[docs/RELEASING.md](docs/RELEASING.md)** (how builds and releases
+happen on GitHub), [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+> The Android app and container are built by GitHub Actions. The Android app has not been run on a real phone yet and
+> the container image's first publish happens when this change reaches `main`; see "What has been verified" in
+> docs/MOBILE.md and the Actions tab for build status.
 
 ## Install and run
 
@@ -44,7 +55,7 @@ Options:
 
 | Flag | Meaning |
 | --- | --- |
-| `--port 8080` / `--host 127.0.0.1` | Where to listen. Keep it on localhost: the app has no login. |
+| `--port 8080` / `--host 127.0.0.1` | Where to listen. Keep it on localhost: the app speaks plain HTTP (accounts protect data, not the wire). |
 | `--data-dir PATH` | Where snapshots and caches are stored (default: your user data folder). |
 | `--offline` | Never call NSE; serve the last saved snapshot only. |
 | `--no-news` | Do not fetch Yahoo Finance / Google News headlines. |

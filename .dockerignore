@@ -1,0 +1,12 @@
+.git
+.github
+data-cache
+nse-probe
+dist
+mobile
+docs
+tests
+**/__pycache__
+*.db
+*.db-*
+breaker.json

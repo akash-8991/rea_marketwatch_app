@@ -97,6 +97,9 @@ One JSON line per API request on stderr: `ts`, `level`, `requestId`, `method`, `
 | Option chain says no data | no CSV imported and no endpoint | Drop a CSV into the inbox folder or use Import CSV. A rejected file's reason is in the audit log. |
 
 ## Deploy and rollback
+Container: `docker pull ghcr.io/akash-8991/rea_marketwatch_app:<tag>` and recreate the container; the `/data` volume keeps accounts and the
+audit log (see INSTALL.md section 2b). Releases and rollbacks of every artifact: RELEASING.md.
+
 Install: `pip install marketlens-<version>-py3-none-any.whl`. Upgrade: install the new wheel over it; the database
 migrates itself. Rollback: reinstall the previous wheel (see the migration note above for the database). The package
 has no dependencies and bundles no NSE data.

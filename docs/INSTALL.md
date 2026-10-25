@@ -1,7 +1,8 @@
 # Installation and deployment guide
 
-MarketLens is a local web app: you run it on your own computer and open it in your browser. It needs Python and
-nothing else (no database server, no Node.js, no other packages).
+MarketLens runs on your own device and keeps your data there. Choose how: **Android phone** (standalone app, see
+[MOBILE.md](MOBILE.md)), **container** (section 2b), or **Python** on a computer (below). The desktop version is a local
+web app you open in your browser; it needs Python and nothing else (no database server, no Node.js, no other packages).
 
 ## 1. Requirements
 - Python **3.9 or newer** (tested on 3.12, 3.13 and 3.14; 3.9 to 3.11 are untested).
@@ -38,6 +39,30 @@ marketlens
 git clone https://github.com/akash-8991/rea_marketwatch_app.git && cd rea_marketwatch_app
 PYTHONPATH=src python3 -m marketlens
 ```
+
+## 2b. Run it as a container (Docker or Podman)
+The image is built and published by GitHub Actions to GitHub Container Registry; nothing needs to be built by you.
+
+```bash
+docker run -d --name marketlens --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 -v marketlens-data:/data \
+  ghcr.io/akash-8991/rea_marketwatch_app:latest
+# then open http://127.0.0.1:8080 and create an account
+```
+or `docker compose up -d` with the repository's `docker-compose.yml` (read-only root file system, no extra privileges).
+
+- **Keep the port on 127.0.0.1** (as above). The app speaks plain HTTP; accounts protect your data from other users, not
+  from someone on your network watching traffic. For remote access put a TLS reverse proxy in front.
+- **Data** lives in the `marketlens-data` volume (`/data`: accounts, option snapshots, audit log, cached prices).
+- **Option-chain CSVs**: use the Import button, or mount a folder: `-v "$PWD/option-inbox:/data/option-inbox"`
+  (the container user is UID 10001, so make the folder writable by it).
+- **Flags**: append them to `docker run`, e.g. `... :latest --offline`. Environment: `NSE_FO_MCP_URL` and friends.
+- **Tags**: `latest` follows `main`; `1.2.3` and `1.2` follow version tags; pin one for repeatable installs.
+- **Upgrade**: `docker pull ghcr.io/akash-8991/rea_marketwatch_app:latest && docker rm -f marketlens` and run again; the
+  volume keeps your data and the database upgrades itself. **Back up**: `docker run --rm -v marketlens-data:/d -v "$PWD":/b busybox tar czf /b/marketlens-backup.tgz -C /d .`
+- **Admin tasks** (see section 8): `docker exec -it marketlens marketlens --data-dir /data --reset-password USERID`.
+- **Health**: the image has a health check on `/healthz`; `docker ps` shows `healthy`.
+- If the package is private on your fork, `docker login ghcr.io` first, or set the package to public in its GitHub settings.
 
 ## 3. First run
 `marketlens` starts the server on `http://127.0.0.1:8080/` and opens your browser. The first visit shows
@@ -136,5 +161,9 @@ python3 -m pip wheel . --no-deps -w dist                       # build the wheel
 More: `docs/ARCHITECTURE.md` (design and trade-offs), `docs/OPERATIONS.md` (limits, audit log, accounts, runbook),
 `docs/ASSESSMENT.md` (findings and measured before/after).
 
-## 11. Licence
+## 11. Phone and releases
+Android: [MOBILE.md](MOBILE.md). How the APK, container image and Python wheel are built and published, and how to cut a
+release: [RELEASING.md](RELEASING.md).
+
+## 12. Licence
 MIT. See the `LICENSE` file. The software is provided as is, without warranty, and nothing it shows is investment advice.

@@ -1,0 +1,72 @@
+name: Container image
+
+# Builds the MarketLens container, smoke-tests it, and publishes it to GitHub Container Registry
+# (ghcr.io/akash-8991/rea_marketwatch_app). Pull requests build and test only; nothing is pushed.
+#   push to main        -> :latest and :main
+#   tag v1.2.3          -> :1.2.3 and :1.2
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths: ['src/**', 'Dockerfile', 'pyproject.toml', 'MANIFEST.in', '.dockerignore', '.github/workflows/container.yml']
+  pull_request:
+    paths: ['src/**', 'Dockerfile', 'pyproject.toml', 'MANIFEST.in', '.dockerignore', '.github/workflows/container.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/akash-8991/rea_marketwatch_app
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: PYTHONPATH=src python -m unittest discover -s tests
+
+  image:
+    needs: python-tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build (loaded locally for the smoke test)
+        uses: docker/build-push-action@v6
+        with: { context: ., load: true, tags: marketlens:ci, cache-from: type=gha, cache-to: 'type=gha,mode=max' }
+      - name: Smoke test the container
+        run: |
+          docker run -d --name ml -p 127.0.0.1:8080:8080 --read-only --tmpfs /tmp --cap-drop ALL -v mldata:/data marketlens:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
+          curl -fsS http://127.0.0.1:8080/healthz | grep '"status": *"ok"'
+          curl -fsS http://127.0.0.1:8080/api/auth/status | grep '"loginRequired": *true'
+          curl -fsS http://127.0.0.1:8080/ | grep -q '<title>MarketLens'
+          curl -fsS -X POST http://127.0.0.1:8080/api/auth/signup -H 'Content-Type: application/json' -H 'X-Requested-With: MarketLens' \
+            -d '{"name":"Ci Check","email":"ci@example.com","dob":"1990-01-01","userId":"ci.check","password":"cobalt-meadow-83x"}' | grep '"userId": *"ci.check"'
+          docker exec ml id -u | grep -qx 10001
+          docker logs ml | tail -5
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: '${{ github.actor }}', password: '${{ secrets.GITHUB_TOKEN }}' }
+      - name: Image tags
+        if: github.event_name != 'pull_request'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - name: Publish
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v6
+        with: { context: ., push: true, tags: '${{ steps.meta.outputs.tags }}', labels: '${{ steps.meta.outputs.labels }}', cache-from: type=gha }
