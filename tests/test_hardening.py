@@ -164,9 +164,12 @@ class ConnectionCap(Served):
         with self.assertRaises((http.client.RemoteDisconnected, ConnectionError, OSError)):
             b.request("GET", "/healthz"); b.getresponse()
         b.close(); a.close()
-        for _ in range(50):   # the slot frees once the first client disconnects
-            if self.request("GET", "/healthz")[0] == 200:
-                break
+        for _ in range(100):   # the slot frees once the first client disconnects; until then a probe may be refused (that is the feature)
+            try:
+                if self.request("GET", "/healthz")[0] == 200:
+                    break
+            except (http.client.RemoteDisconnected, ConnectionError, OSError):
+                pass
             time.sleep(0.05)
         else:
             self.fail("connection slot never freed")
