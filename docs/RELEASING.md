@@ -22,7 +22,7 @@ against the Python engine's output (`android.yml`). Pull requests run tests and 
 ```bash
 # 1. bump versions: pyproject.toml + src/marketlens/__init__.py (desktop), mobile/package.json (Android), update docs
 # 2. make sure main is green (Actions tab), then:
-git tag v0.3.0        && git push origin v0.3.0          # container image :0.3.0 and :0.3
+git tag v0.2.0        && git push origin v0.2.0          # container image :0.2.0 and :0.2
 git tag mobile-v0.3.0 && git push origin mobile-v0.3.0   # Android APK as a GitHub Release
 ```
 The Android version code is the workflow run number, so each build can update the previous one if signed with the same key.
