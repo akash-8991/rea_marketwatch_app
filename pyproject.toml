@@ -7,10 +7,12 @@ name = "marketlens"
 version = "0.2.0"
 description = "Local NSE markets dashboard: prices, screener with technical, sentiment and income views, live news, option chain."
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.9"
 dependencies = []   # standard library only
 keywords = ["nse", "stocks", "screener", "dashboard", "mcp"]
 classifiers = [
+  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Environment :: Web Environment",
   "Intended Audience :: End Users/Desktop",

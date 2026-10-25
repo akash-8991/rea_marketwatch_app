@@ -137,5 +137,4 @@ More: `docs/ARCHITECTURE.md` (design and trade-offs), `docs/OPERATIONS.md` (limi
 `docs/ASSESSMENT.md` (findings and measured before/after).
 
 ## 11. Licence
-No licence has been chosen yet, so by default all rights are reserved. Add a `LICENSE` file before inviting others to
-reuse or contribute.
+MIT. See the `LICENSE` file. The software is provided as is, without warranty, and nothing it shows is investment advice.

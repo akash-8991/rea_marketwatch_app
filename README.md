@@ -175,3 +175,6 @@ Layout: `src/marketlens/` (`nse.py` MCP client and rate limiting, `market.py` da
 `scheduler.py` 2.5-minute refresh, `options_mcp.py` MCP server, `ratelimit.py` and `metrics.py` traffic control and
 telemetry, `server.py` HTTP server and API, `static/` web app: `lib.js` shared helpers and API client, `app.js` router and
 views, `screener.js` lazy-loaded screener, `css/style.css` design tokens and components).
+
+## Licence
+MIT, Copyright (c) 2026 akash-8991. See `LICENSE`.
