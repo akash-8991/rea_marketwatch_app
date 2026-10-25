@@ -60,14 +60,16 @@ jobs:
           KEYSTORE_B64: ${{ secrets.MARKETLENS_DEBUG_KEYSTORE }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            mkdir -p ~/.android && echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/marketlens.keystore"
+            echo "SIGN_ARGS=-Pandroid.injected.signing.store.file=$RUNNER_TEMP/marketlens.keystore -Pandroid.injected.signing.store.password=android -Pandroid.injected.signing.key.alias=androiddebugkey -Pandroid.injected.signing.key.password=android" >> "$GITHUB_ENV"
             echo "Using the configured keystore"
+            keytool -list -keystore "$RUNNER_TEMP/marketlens.keystore" -storepass android | grep -i "fingerprint"
           else
             echo "::warning::No MARKETLENS_DEBUG_KEYSTORE secret: this APK gets a one-off key, so installing a later build over it will require uninstalling first."
           fi
       - name: Build the APK
         working-directory: mobile/android
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleDebug $SIGN_ARGS
       - name: Name, checksum and inspect the APK
         id: pack
         working-directory: mobile
