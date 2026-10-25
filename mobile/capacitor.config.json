@@ -3,9 +3,18 @@
   "appName": "MarketLens",
   "webDir": "www",
   "backgroundColor": "#ffffff",
-  "server": { "androidScheme": "https" },
-  "plugins": {
-    "CapacitorHttp": { "enabled": true }
+  "server": {
+    "androidScheme": "https"
   },
-  "android": { "allowMixedContent": false }
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "SystemBars": {
+      "insetsHandling": "css"
+    }
+  },
+  "android": {
+    "allowMixedContent": false
+  }
 }

@@ -38,6 +38,9 @@ Guides: **[docs/INSTALL.md](docs/INSTALL.md)** (install, containers, background 
 **[docs/MOBILE.md](docs/MOBILE.md)** (Android app), **[docs/RELEASING.md](docs/RELEASING.md)** (how builds and releases
 happen on GitHub), [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+> **On the phone**, the option chain loads by itself from NSE's published end-of-day derivatives file (no CSV upload; end-of-day, not
+> live), every screen answers from saved data first and refreshes in the background, and the layout keeps clear of the camera cut-out.
+
 > The Android app and container are built by GitHub Actions. The Android app has not been run on a real phone yet and
 > the container image's first publish happens when this change reaches `main`; see "What has been verified" in
 > docs/MOBILE.md and the Actions tab for build status.

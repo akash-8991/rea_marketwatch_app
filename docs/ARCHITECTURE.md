@@ -60,3 +60,27 @@ on the server (see OPERATIONS.md, Accounts). Loopback only; Host and Origin must
 `Cross-Origin-Resource-Policy: same-origin`; all output escaped in the UI; RSS parsing rejects DOCTYPE/ENTITY
 (entity-expansion attacks) and only `http(s)` links are kept; CSV export neutralises spreadsheet formulas; no secrets,
 no cookies, no accounts, no third-party scripts.
+
+## Phone app (mobile/)
+The Android app runs the same UI on a JavaScript engine in the WebView instead of a Python server (docs/MOBILE.md). Design:
+
+```mermaid
+flowchart LR
+  UI["Same UI (static/)"] -- "fetch('/api/...') intercepted" --> R["engine.js router"]
+  R --> SWR["saved data first,<br/>refresh in background"]
+  SWR --> M["market.js<br/>bulk quote, extras job"]
+  M --> T["nse.js: 2 lanes,<br/>warm sessions, circuit breaker"]
+  R --> F["optionfeed.js<br/>freshness policy"] --> B["bhavcopy.js<br/>zip + CSV reader"]
+  R --> A["accounts.js, options.js<br/>(IndexedDB, audit chain)"]
+  T --> NSE["NSE MCP"]
+  B --> ARC["NSE archive: end-of-day derivatives file"]
+```
+| Decision | Why |
+|---|---|
+| UI unchanged, requests intercepted at `fetch` | one UI for both apps; the engine is the only thing ported, and golden tests pin it to the Python output |
+| Ports and adapters (`fetchFn`, `optionSource`, `storage`, `now` injected) | every piece is tested without a network or a clock |
+| Stale-while-revalidate for every screen | perceived latency is the time to read local storage, not the time NSE takes |
+| One bulk quote, one extras job at two lanes | requests are the cost: 19 for a cold home page instead of hundreds |
+| Retry on the same MCP session | a misrouted call (404) costs 1 request, not a new 3-request session |
+| Option chain from NSE's published end-of-day file | NSE's live option-chain API is protected against automated clients, so it is not used and no browser is imitated; the archive file is a legitimate download. The cost: end-of-day data, no implied volatility |
+| Freshness policy in one class (`OptionFeed`) | single-flight, 20-minute cooldown, always falls back to saved data; the UI never waits on a retry loop |

@@ -14,12 +14,14 @@ cpSync(join(root, 'src', 'marketlens', 'static'), www, { recursive: true });
 cpSync(join(mobile, 'engine'), join(www, 'engine'), { recursive: true });
 
 // Installs the on-device engine before the UI's first request.
-writeFileSync(join(www, 'engine-boot.js'), "import { installEngine } from './engine/shim.js';\ninstallEngine();\n");
+writeFileSync(join(www, 'engine-boot.js'), "import { installEngine } from './engine/shim.js';\ndocument.documentElement.classList.add('native');\ninstallEngine();\n");
+cpSync(join(mobile, 'shell', 'mobile.css'), join(www, 'css', 'mobile.css'));
 
 let html = readFileSync(join(www, 'index.html'), 'utf8');
 if (!html.includes('js/data.js')) throw new Error('index.html changed: cannot find the data.js script tag');
 html = html
   .replace('<meta name="viewport" content="width=device-width, initial-scale=1">', '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">')
+  .replace('<link rel="stylesheet" href="css/style.css">', '<link rel="stylesheet" href="css/style.css">\n  <link rel="stylesheet" href="css/mobile.css">')
   .replace('<script type="module" src="js/data.js"></script>', '<script type="module" src="engine-boot.js"></script>\n  <script type="module" src="js/data.js"></script>')
   .replace('MarketLens is a local tool using NSE data for information only. Not investment advice.', 'MarketLens runs entirely on this phone and uses NSE data for information only. Not investment advice.');
 writeFileSync(join(www, 'index.html'), html);

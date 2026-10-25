@@ -7,6 +7,8 @@ import { CsvError, OptionStore, SYMBOL_RE as OPT_SYMBOL } from './options.js';
 import { Market, SYMBOL_RE } from './market.js';
 import { News } from './news.js';
 import { NseClient, UpstreamBlocked } from './nse.js';
+import { BhavcopySource, INDEX_SYMBOLS } from './bhavcopy.js';
+import { OptionFeed } from './optionfeed.js';
 
 export const VERSION = '0.3.0-mobile';
 const MAX_UPLOAD = 2_000_000;
@@ -16,28 +18,59 @@ export const DEFAULTS = {
   offline: false, news: true, requireLogin: true, universeSize: 60, pbkdf2Iterations: 600000,
 };
 
-export function createEngine({ storage = new MemoryStorage(), fetchFn, settings = {}, now = () => Date.now() } = {}) {
+export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSource = null, settings = {}, now = () => Date.now() } = {}) {
   const cfg = { ...DEFAULTS, ...settings };
   const cache = new Cache(now), snaps = new Snapshots(storage, now);
   const opts = new OptionStore(storage);
   const accounts = new Accounts(storage, opts, { iterations: cfg.pbkdf2Iterations, now: () => now() / 1000 });
-  const nse = new NseClient({ storage, cmUrl: cfg.cmUrl, bhavcopyUrl: cfg.bhavcopyUrl, offline: cfg.offline, fetchFn, now: () => now() / 1000, delayMs: cfg.nseDelayMs ?? 150,
+  const nse = new NseClient({ storage, cmUrl: cfg.cmUrl, bhavcopyUrl: cfg.bhavcopyUrl, offline: cfg.offline, fetchFn, now: () => now() / 1000, delayMs: cfg.nseDelayMs ?? 150, timeoutMs: cfg.nseTimeoutMs ?? 20000,
     onBlocked: (code) => opts.safeAudit('upstream_blocked', 'nse', `NSE MCP returned HTTP ${code}; all NSE traffic paused for 15 min`, { outcome: 'error', channel: 'system' }) });
   const market = new Market({ nse, snaps, cache, settings: cfg, now: () => new Date(now()) });
   const news = new News({ cache, snaps, fetchFn, enabled: cfg.news, delayMs: cfg.feedDelayMs ?? 200, now: () => new Date(now()) });
+  const feed = new OptionFeed({ source: optionSource || new BhavcopySource({ now }), store: opts, now });
   const started = now();
+  let bootRefresh = null;   // the one background refresh in flight
 
   const json = (body, status = 200, extra = {}) => ({ status, body, ...extra });
   const err = (status, message, more = {}) => json({ error: message, ...more }, status);
 
+  /** Stale-while-revalidate: if anything is saved, answer from it AT ONCE and refresh behind the scenes (the UI polls again
+   * while `refreshing` is true). Only a first run with nothing saved waits for NSE. */
+  function revalidate() {
+    if (!bootRefresh) {
+      bootRefresh = cache.cached('bootstrap', 60, () => market.buildBootstrap()).then(() => ({ ok: true }), (e) => ({ ok: false, error: e })).then((r) => { bootRefresh = null; lastBoot = r; return r; });
+    }
+    return bootRefresh;
+  }
+  let lastBoot = null;
+
+  async function withExtras(boot) {   // 52-week range and 30-day change arrive with the background job; show them as soon as they exist
+    const raw = await snaps.get('extras');
+    if (!raw) return boot;
+    return { ...boot, stocks: boot.stocks.map((s) => { const e = raw[s.sym]; return e ? { ...s, hi52: s.hi52 ?? e.hi52 ?? null, lo52: s.lo52 ?? e.lo52 ?? null, pct30: s.pct30 ?? e.pct30 ?? null } : s; }) };
+  }
+
   async function bootstrapPayload() {
     let boot;
-    try { boot = { ...(await cache.cached('bootstrap', 60, () => market.buildBootstrap())), stale: false }; } catch (e) {
-      const snap = await snaps.get('bootstrap');
-      if (!snap) throw e;
-      boot = { ...snap, stale: true, staleReason: String(e.message).slice(0, 200), retryInSeconds: nse.retryInSeconds() };
+    const memo = cache.m.get('bootstrap');
+    if (memo && memo.until > now()) boot = { ...memo.val, stale: false, refreshing: false };            // fresh (< 60 s): no work at all
+    else {
+      const saved = await snaps.get('bootstrap');
+      if (saved) {                                                                                       // instant answer, refresh in the background
+        const blocked = !nse.available();
+        if (!blocked) revalidate();
+        const failed = !blocked && lastBoot && !lastBoot.ok && !bootRefresh;
+        boot = { ...saved, stale: blocked || !!failed, refreshing: !blocked && !!bootRefresh };
+        if (failed) Object.assign(boot, { staleReason: String(lastBoot.error.message).slice(0, 200), retryInSeconds: 0 });
+        if (blocked) Object.assign(boot, { staleReason: nse.breaker.reason || 'offline mode', retryInSeconds: nse.retryInSeconds() });
+      } else {                                                                                           // first run: nothing to show yet
+        const r = await revalidate();
+        if (!r.ok) throw r.error;
+        boot = { ...(await snaps.get('bootstrap')), stale: false, refreshing: false };
+      }
     }
     boot.offline = cfg.offline;
+    boot = await withExtras(boot);
     boot.stocks = boot.stocks.map((s) => ({ ...s, techSnap: analysis.technicalSnapshot(s) }));
     return boot;
   }
@@ -59,14 +92,17 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, settings 
     return { ...d, analysis: await market.analyzeDetail(d) };
   }
 
-  const optionsStatus = () => ({ configured: false, reason: 'On the phone, option-chain data comes from CSV files you download from NSE and import here. No derivatives endpoint is configured.' });
+  const optionsStatus = () => ({ configured: true, auto: true, source: 'NSE end-of-day derivatives file' });
 
   const configPayload = () => ({ offline: cfg.offline, news: cfg.news, loginRequired: cfg.requireLogin, options: optionsStatus(), version: VERSION, rules: analysis.RULES, rateLimits: null, platform: 'mobile' });
 
   async function optionChain(symbol, expiry) {
-    const snap = await opts.latest((symbol || 'NIFTY').toUpperCase(), expiry);
-    if (snap) return { ...snap, available: true, tool: 'saved snapshot', warning: null };
-    return { available: false, reason: 'No option-chain data yet. Download the CSV from NSE’s option-chain page in your phone’s browser, then use Import below and pick the file. The NSE servers MarketLens uses by default (cash market and bhavcopy) have no option-chain tool.' };
+    const sym = (symbol || 'NIFTY').toUpperCase();
+    const snap = await feed.chain(sym, expiry);
+    const st = feed.status();
+    const failed = /^could not/.test(st.result);
+    if (snap) return { ...snap, available: true, tool: 'NSE end-of-day file', warning: failed ? `${st.result}; showing what was saved earlier` : null, feed: st };
+    return { available: false, reason: failed ? `${st.result}. Check the connection and try again, or import a CSV under “Import your own CSV”.` : `NSE has no option contracts for ${sym} in its latest file.`, feed: st };
   }
 
   async function authPost(path, body, token) {
@@ -133,7 +169,10 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, settings 
       if (m) return json(await news.regionNews(m[1]));
       m = /^\/api\/news\/stock\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await news.stockNews(sym)) : err(400, 'bad symbol'); }
-      if (p === '/api/options/meta') return json({ symbols: await opts.symbols(), scheduler: { inbox: 'Import CSV button (this phone has no inbox folder)', intervalSeconds: 0, lastRun: null, nextRun: null, result: 'manual import only' }, snapshots: await opts.snapshots(10), dbPath: 'app-private storage' });
+      if (p === '/api/options/meta') {
+        const st = await feed.refresh({ force: !!qs.get('refresh') });   // shares the one in-flight check; within the cooldown it returns at once
+        return json({ symbols: await feed.symbols(), auto: true, feed: st, scheduler: { inbox: '', intervalSeconds: 0, lastRun: st.lastCheck, nextRun: null, result: st.result }, snapshots: await opts.snapshots(10), dbPath: 'app-private storage' });
+      }
       if (p === '/api/audit') return json({ entries: await opts.auditLog(qs.get('limit') || '30'), verify: await opts.verifyAudit() });
       if (p === '/api/metrics') return json({ platform: 'mobile', nse: { offline: cfg.offline, available: nse.available(), retryInSeconds: nse.retryInSeconds() } });
       if (p === '/api/options') { const sym = qs.get('symbol') || 'NIFTY'; return OPT_SYMBOL.test(sym) ? json(await optionChain(sym, (qs.get('expiry') || '').slice(0, 32))) : err(400, 'bad symbol'); }
@@ -144,5 +183,5 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, settings 
     }
   }
 
-  return { handle, nse, market, news, accounts, opts, snaps, cache, storage, cfg };
+  return { handle, feed, nse, market, news, accounts, opts, snaps, cache, storage, cfg };
 }

@@ -5,6 +5,7 @@
 
 export const BREAKER_SECONDS = 15 * 60;
 export const MAX_WORKERS = 2;
+const MISS_LIMIT = 6;
 const HDR = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18' };
 
 export class UpstreamBlocked extends Error {}
@@ -14,10 +15,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** Reject after ms even if the transport ignores AbortController (Capacitor's native HTTP may). */
 export const withTimeout = (p, ms) => new Promise((res, rej) => { const t = setTimeout(() => rej(new Error('timeout')), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
 
-class Semaphore {
-  constructor(n) { this.n = n; this.q = []; }
-  async acquire() { if (this.n > 0) { this.n--; return; } await new Promise((r) => this.q.push(r)); }
-  release() { const next = this.q.shift(); if (next) next(); else this.n++; }
+/** Fixed set of "lanes" (max two NSE requests in flight, as before). Each lane keeps its own warm MCP session per endpoint. */
+class LanePool {
+  constructor(n) { this.free = Array.from({ length: n }, (_, i) => ({ id: i, sessions: {}, misses: {} })); this.q = []; }
+  acquire() { return this.free.length ? Promise.resolve(this.free.pop()) : new Promise((r) => this.q.push(r)); }
+  release(lane) { const next = this.q.shift(); if (next) next(lane); else this.free.push(lane); }
 }
 
 export function parseBody(raw) {
@@ -29,9 +31,10 @@ export function parseBody(raw) {
 }
 
 export class NseClient {
-  constructor({ storage, cmUrl, bhavcopyUrl, offline = false, fetchFn = (...a) => fetch(...a), now = () => Date.now() / 1000, delayMs = 150, onBlocked = null }) {
-    Object.assign(this, { s: storage, cmUrl, bhavcopyUrl, offline, fetchFn, now, delayMs, onBlocked });
-    this.sem = new Semaphore(MAX_WORKERS);
+  constructor({ storage, cmUrl, bhavcopyUrl, offline = false, fetchFn = (...a) => fetch(...a), now = () => Date.now() / 1000, delayMs = 150, timeoutMs = 20000, onBlocked = null }) {
+    Object.assign(this, { s: storage, cmUrl, bhavcopyUrl, offline, fetchFn, now, delayMs, timeoutMs, onBlocked });
+    this.pool = new LanePool(MAX_WORKERS);
+    this.stats = { requests: 0, sessions: 0, misses: 0 };
     this.breaker = { until: 0, reason: '' };
   }
 
@@ -49,43 +52,56 @@ export class NseClient {
   }
 
   async post(url, body, sid = null) {
-    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 40000);
+    this.stats.requests++;
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), this.timeoutMs);
     try {
       const headers = { ...HDR, ...(sid ? { 'Mcp-Session-Id': sid } : {}) };
-      const r = await withTimeout(this.fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal: ctl.signal }), 40000);
+      const r = await withTimeout(this.fetchFn(url, { method: 'POST', headers, body: JSON.stringify(body), signal: ctl.signal }), this.timeoutMs);
       if (r.status >= 400 && !(r.status === 404 && body.method === 'notifications/initialized')) throw new HttpError(r.status);
-      return [r.headers.get('Mcp-Session-Id'), await withTimeout(r.text(), 40000)];
+      return [r.headers.get('Mcp-Session-Id'), await withTimeout(r.text(), this.timeoutMs)];
     } catch (e) {
       if (e instanceof HttpError) throw e;
       throw new Error('connection error');
     } finally { clearTimeout(timer); }
   }
 
-  async session(url) {
+  async initSession(url) {
+    this.stats.sessions++;
     const [sid] = await this.post(url, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'marketlens-mobile', version: '1' } } });
     try { await this.post(url, { jsonrpc: '2.0', method: 'notifications/initialized' }, sid); } catch (e) { /* NSE answers 404 here yet still accepts the session */ }
     return sid;
   }
 
-  async rpc(url, method, params = {}, attempts = 8) {
-    let last = null;
+  /** One JSON-RPC call. A lane keeps its session between calls: NSE's load balancer answers 404 whenever a request lands on a
+   * backend that does not know the session (measured: about 60% of calls), and a retry on the SAME session usually lands on the
+   * right one, which costs 1 request instead of the 3 a fresh session costs. After MISS_LIMIT 404s in a row the session is dropped. */
+  async rpc(url, method, params = {}, attempts = 14) {
+    let last = null, netFails = 0;
     for (let i = 0; i < attempts; i++) {
       if (this.offline) throw new UpstreamBlocked('offline mode (no NSE requests are made)');
       if (this.now() < this.breaker.until) throw new UpstreamBlocked(this.breaker.reason);
-      await this.sem.acquire();
+      const lane = await this.pool.acquire();
       try {
-        const sid = await this.session(url);
+        const sid = lane.sessions[url] || (lane.sessions[url] = await this.initSession(url));
         const [, raw] = await this.post(url, { jsonrpc: '2.0', id: 2, method, params }, sid);
-        await sleep(this.delayMs);
+        lane.misses[url] = 0;
+        if (this.delayMs) await sleep(this.delayMs);
         const msg = parseBody(raw);
         if (msg.error) throw new Error(`${method}: ${String(JSON.stringify(msg.error)).slice(0, 160)}`);
         return msg.result || {};
       } catch (e) {
         last = e;
         if (e instanceof HttpError && [401, 403, 429].includes(e.status)) { await this.openBreaker(e.status); throw new UpstreamBlocked(this.breaker.reason); }
-        if (!(e instanceof HttpError) && !(e instanceof SyntaxError) && e.message !== 'connection error') throw e;
-        await sleep(this.delayMs ? 100 : 0);
-      } finally { this.sem.release(); }
+        if (e instanceof HttpError && e.status === 404) {
+          this.stats.misses++;
+          lane.misses[url] = (lane.misses[url] || 0) + 1;
+          if (lane.misses[url] >= MISS_LIMIT || !lane.sessions[url]) { delete lane.sessions[url]; lane.misses[url] = 0; }
+        } else if (e instanceof HttpError || e.message === 'connection error' || e instanceof SyntaxError) {
+          delete lane.sessions[url];   // unknown state: start clean next time
+          if (e.message === 'connection error' && ++netFails >= 3) throw new Error(`${method} failed: no answer from NSE (${this.timeoutMs / 1000} s timeout, 3 tries)`);
+        } else throw e;
+        if (this.delayMs) await sleep(Math.min(this.delayMs, 60));
+      } finally { this.pool.release(lane); }
     }
     throw new Error(`${method} failed: ${last}`);
   }

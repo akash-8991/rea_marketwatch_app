@@ -25,14 +25,24 @@ Android 7.0 or newer.
 | Search by symbol | Yes |
 | India and global news (Yahoo Finance, Google News headlines) | Yes |
 | Accounts: sign up, sign in, forgot user ID, change user ID or password | Yes, stored only on the phone |
-| Option chain | From a CSV you download from NSE's site in your phone browser, then **Import**; same format as the desktop app |
+| Option chain | **Loads by itself** when you open the screen, from NSE's published end-of-day derivatives file (all index and stock options: open interest, change in OI, volume, closing price). End-of-day, not live; no implied volatility or bid/ask. Importing your own CSV is still possible but optional |
 | Audit log (hash-chained) | Yes, and it uses the same hash formula as the desktop app |
 | Saved last data when offline or when NSE blocks us | Yes (shown as **Stale**) |
 
+## 2b. Speed
+Loading is built around three rules, measured against live NSE:
+- **Saved data first.** Every screen answers at once from what the phone already holds and refreshes behind the scenes (the
+  banner says **Updating…**). Only the very first launch has to wait.
+- **One bulk call, not fifty.** The home page used to make a quote request per stock. NSE has a bulk-quote call, so the whole home
+  page is about 6 requests. Measured: a cold load of 50 stocks takes about 2 s with 19 requests (the extra ones are retries, see next).
+  Reopening it is instant.
+- **Warm sessions.** NSE's servers answer "not found" to about 60% of requests that reach the wrong backend. The app now keeps two
+  connections open and simply retries on the same session (1 request) instead of starting over (3 requests). The 52-week range and
+  30-day change fill in a few seconds later, from a background job that runs two requests at a time (never more, to stay polite to NSE).
+
 ## 3. What is different from the desktop app
 - **Foreground only.** The app refreshes while it is open. Android does not let it run in the background, so there is no
-  2.5-minute background download. The option chain is imported by hand.
-- **No inbox folder** for CSV files; use the Import button.
+  2.5-minute background download. The option chain checks for a newer file when you open the screen, at most every 20 minutes.
 - **Smaller history:** the phone keeps the newest 20 option snapshots per symbol and expiry (the desktop keeps 300).
 - **No `/api/metrics`, rate limiter or load shedding:** there is one user and no network server, so they do not apply.
 - **Sign-in lasts 15 days.** You stay signed in after closing the app until you tap Sign out; the session ends by itself 15 days
@@ -50,6 +60,9 @@ layer, which is not subject to that rule. This is the reason the iPhone version 
   (remembered across restarts) and shows saved data as **Stale**. Many phones fetching from the same service can look like
   scraping to NSE, and a public rollout is a decision to make with NSE's terms in front of you. No NSE data is bundled
   in the app, and every user fetches their own.
+- **Option chain source.** NSE's live option-chain API is protected against automated clients, so the app does not use it and does
+  not imitate a browser. It downloads the end-of-day derivatives file that NSE publishes for download, identified as an app, at most
+  every 20 minutes and only for days it does not have yet. The tests contain an 11-row excerpt of that public file as a fixture.
 - **Licensing:** NSE market data has redistribution rules. This app displays data on the device that fetched it and
   does not rebroadcast it. Check NSE's terms before publishing the app widely.
 - **Recovery by name, email and date of birth is weak by nature** (anyone who knows all three can take over the account;
@@ -121,14 +134,19 @@ not a standalone app and the desktop server is deliberately bound to `127.0.0.1`
   in JavaScript and JavaScript produces the identical hash for the same salt.
 - End to end through the router with a fake NSE server that fails half of its requests: retries, the two-request cap, the
   circuit breaker (also after a restart), stale fallback, sign-up, lockout, recovery, CSV import, duplicates and rejections.
-- The real web interface, running on the engine in a desktop browser with no Python server: sign-up and sign-in, Home,
-  Markets, Screener, Stock page, Option chain with an imported CSV.
+- The real web interface, running on the engine in a desktop browser at phone size, with no Python server: sign-up and sign-in,
+  Home, Markets, Screener, Stock page, and the Option chain loading by itself from a real excerpt of NSE's 23-Oct-2026 file.
+- Speed, with tests: one bulk quote instead of per-stock calls, session reuse under a 60% misroute rate, answering at once while
+  NSE hangs. A live cold load of the home page took about 2.3 s (one measurement, one network; yours will differ).
+- Phone layout: the header starts at least 1 cm below the top edge and moves further down under a larger cut-out or status bar
+  (checked by simulating insets; see the next list for what is not checked).
 
 **Not verified:**
-- A real Android device or emulator: installation, the file picker, back button, rotation, keyboard behaviour and
+- A real Android device or emulator: installation, how the camera cut-out actually looks on your phone model, the file picker, back button, rotation, keyboard behaviour and
   performance (the PBKDF2 sign-up/sign-in step uses 600,000 rounds; it should take about a second on a recent phone, slower on
   old ones).
-- Capacitor's native HTTP layer against live NSE, Yahoo and Google endpoints. The engine is written to work with it,
+- Capacitor's native HTTP layer against live NSE, Yahoo and Google endpoints, and its download of NSE's derivatives zip (the app asks the native layer for the
+  file as base64; this path is untested on a device). The engine is written to work with it,
   and falls back to saved data if it does not.
 - Live NSE at all since NSE blocked this project's earlier test traffic.
 - The Gradle build, until the GitHub Actions workflow has run (check the **Actions** tab).

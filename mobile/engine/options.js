@@ -14,6 +14,10 @@ export const LEG_KEYS = ['oi', 'chgOi', 'vol', 'iv', 'ltp', 'chg', 'bid', 'ask']
 
 export class CsvError extends Error {}
 
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+/** '27-Oct-2026' -> '2026-10-27' so expiries sort as dates, not as text. */
+export const expiryKey = (label) => { const [d, m, y] = String(label).split('-'); const mi = MONTHS.indexOf((m || '').toLowerCase()); return mi < 0 ? String(label) : `${y}-${String(mi + 1).padStart(2, '0')}-${String(parseInt(d, 10)).padStart(2, '0')}`; };
+
 export async function sha256Hex(text) {
   const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -157,7 +161,7 @@ export class OptionStore {
       const id = index.seq + 1;
       await this.s.set('snap-rows:' + id, parsed.rows);          // rows first, so a crash leaves no index entry pointing at nothing
       index.seq = id;
-      index.items.push({ id, symbol: sym, expiry: exp, source, filename: (filename || '').slice(0, 120) || null, capturedAt: nowIso(), spot: parsed.spot ?? null, sha256: sha, strikes: parsed.rows.length });
+      index.items.push({ id, symbol: sym, expiry: exp, source, filename: (filename || '').slice(0, 120) || null, capturedAt: nowIso(), spot: parsed.spot ?? null, tradeDate: parsed.tradeDate ?? null, sha256: sha, strikes: parsed.rows.length });
       const same = index.items.filter((i) => i.symbol === sym && i.expiry === exp);
       for (const old of same.slice(0, Math.max(0, same.length - KEEP_SNAPSHOTS))) { await this.s.del('snap-rows:' + old.id); index.items = index.items.filter((i) => i.id !== old.id); }
       await this.s.set('snap-index', index);
@@ -180,14 +184,29 @@ export class OptionStore {
     const index = (await this.s.get('snap-index')) || { items: [] };
     const sym = symbol.toUpperCase();
     const mine = index.items.filter((i) => i.symbol === sym && (!expiry || i.expiry === expiry));
-    const row = mine[mine.length - 1];
+    let row = mine[mine.length - 1];
+    if (!expiry && row && row.tradeDate) {   // automatic files: show the newest trade date's nearest expiry first
+      const newest = mine.reduce((m, x) => ((x.tradeDate || '') > m ? x.tradeDate : m), '');
+      const today = mine.filter((x) => x.tradeDate === newest).sort((a, b) => expiryKey(a.expiry).localeCompare(expiryKey(b.expiry)));
+      row = today.find((x) => expiryKey(x.expiry) >= newest) || today[0] || row;
+    }
     if (!row) return null;
     const rows = (await this.s.get('snap-rows:' + row.id)) || [];
-    const expiries = [...new Set(index.items.filter((i) => i.symbol === sym).map((i) => i.expiry))].sort();
+    const expiries = [...new Set(index.items.filter((i) => i.symbol === sym).map((i) => i.expiry))].sort((a, b) => expiryKey(a).localeCompare(expiryKey(b)));
     let spot = row.spot, est = false;
     if (spot == null) { spot = estimateSpot(rows); est = true; }
     return { spot, spotEstimated: est && spot != null, expiries, rows, summary: summarize(rows, spot),
-      meta: { source: row.source, filename: row.filename, capturedAt: row.capturedAt, snapshotId: row.id, strikes: row.strikes }, symbol: row.symbol, expiry: row.expiry };
+      meta: { source: row.source, filename: row.filename, capturedAt: row.capturedAt, snapshotId: row.id, strikes: row.strikes, tradeDate: row.tradeDate ?? null }, symbol: row.symbol, expiry: row.expiry };
+  }
+
+  /** Newest trade date among snapshots that came from `source`, and whether one exists for this exact contract set. */
+  async latestTradeDate(source) {
+    const i = (await this.s.get('snap-index')) || { items: [] };
+    return i.items.filter((x) => x.source === source && x.tradeDate).reduce((m, x) => (x.tradeDate > m ? x.tradeDate : m), '') || null;
+  }
+  async hasSnapshot(symbol, expiry, tradeDate, source) {
+    const i = (await this.s.get('snap-index')) || { items: [] };
+    return i.items.some((x) => x.symbol === symbol && x.expiry === expiry && x.tradeDate === tradeDate && x.source === source);
   }
 
   async symbols() { const i = (await this.s.get('snap-index')) || { items: [] }; return [...new Set(i.items.map((x) => x.symbol))].sort(); }

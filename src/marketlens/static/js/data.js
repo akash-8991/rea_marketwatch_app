@@ -13,7 +13,7 @@ const D = (window.MLData = {
 
 function applyBoot(boot) {
   D.asOf = boot.asOf; D.fetchedAt = boot.fetchedAt; D.nseTimestamp = boot.nseTimestamp;
-  D.stale = !!boot.stale; D.staleReason = boot.staleReason || ''; D.retryIn = boot.retryInSeconds || 0;
+  D.refreshing = !!boot.refreshing; D.stale = !!boot.stale; D.staleReason = boot.staleReason || ''; D.retryIn = boot.retryInSeconds || 0;
   D.mood = boot.mood || {}; D.breadth = boot.breadth || {};
   D.valuation = boot.valuation || []; D.sectorIdx = boot.sectorIndices || [];
   D.sectorSource = boot.sectorSource || '';
@@ -34,6 +34,9 @@ function applyExtras(ex) {
     const s = D.bySym[sym]; if (!s) return;
     if (e.spark && e.spark.length) s.spark = e.spark;
     if (e.divTtm != null && s.price) { s.divTtm = e.divTtm; s.div = +((e.divTtm / s.price) * 100).toFixed(2); }
+    if (e.hi52 != null) s.hi52 = e.hi52;
+    if (e.lo52 != null) s.lo52 = e.lo52;
+    if (e.pct30 != null) s.pct30 = e.pct30;
     s.tech = e.tech || null; s.fund = e.fund || null;
   });
   D.extrasReady = true;

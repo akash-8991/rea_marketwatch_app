@@ -142,7 +142,7 @@ startVitals();
     const sort = store.get('ml.mktsort', 'chg');
     const cmp = { chg: (a, b) => chgPct(b) - chgPct(a), p30: (a, b) => (b.pct30 ?? -1e9) - (a.pct30 ?? -1e9), val: (a, b) => b.valueCr - a.valueCr, pos: (a, b) => (pos52(b) ?? -1) - (pos52(a) ?? -1), div: (a, b) => (b.div ?? -1) - (a.div ?? -1) }[sort];
     const br = D.breadth || {};
-    const hi = bySort((a, b) => (pos52(b) ?? -1) - (pos52(a) ?? -1)).slice(0, 5), lo = bySort((a, b) => (pos52(a) ?? 101) - (pos52(b) ?? 101)).slice(0, 5);
+    const known = (arr) => arr.filter((x) => pos52(x) != null), hi = known(bySort((a, b) => (pos52(b) ?? -1) - (pos52(a) ?? -1))).slice(0, 5), lo = known(bySort((a, b) => (pos52(a) ?? 101) - (pos52(b) ?? 101))).slice(0, 5);
     return {
       html: `${ticker()}<h1>Market statistics</h1>
       <p class="muted">${br.total_stocks ? `Whole exchange, ${fmtDate(br.date)}: ${br.advances.toLocaleString('en-IN')} advances · ${br.declines.toLocaleString('en-IN')} declines · ${br.unchanged} unchanged (${br.total_stocks.toLocaleString('en-IN')} stocks).` : 'Breadth unavailable.'}</p>
@@ -211,22 +211,31 @@ startVitals();
       html: `<h1>Option chain</h1>
         <form id="oc-form" class="card pfform"><label>Underlying <select name="sym"><option>${esc(sym)}</option></select></label>
           <label>Expiry <select name="expiry"><option value="">Latest saved</option></select></label><button class="btn on" type="submit">Load</button><span id="oc-refresh" class="muted"></span></form>
-        <section class="card"><h2>Import an NSE CSV</h2>
-          <p class="muted">Download the CSV yourself from NSE’s option-chain page, then choose it here or drop it into the inbox folder <code id="oc-inbox">…</code>, which is checked every <span id="oc-int">…</span>. MarketLens never downloads anything from NSE’s website.</p>
+        <section class="card" id="oc-card"><h2 id="oc-h">Import an NSE CSV</h2>
+          <p class="muted" id="oc-p">Download the CSV yourself from NSE’s option-chain page, then choose it here or drop it into the inbox folder <code id="oc-inbox">…</code>, which is checked every <span id="oc-int">…</span>. MarketLens never downloads anything from NSE’s website.</p>
+          <details id="oc-manual" open><summary id="oc-sum">Import a CSV file</summary>
           <form id="oc-upload" class="pfform"><label>CSV file <input type="file" name="file" accept=".csv,text/csv" required></label>
             <label>Symbol <input name="symbol" placeholder="from file name" maxlength="24"></label><label>Expiry <input name="expiry" placeholder="27-Oct-2026" maxlength="12"></label>
-            <label>Spot (optional) <input name="spot" type="number" step="0.01" min="0"></label><button class="btn on" type="submit">Import</button><span id="oc-msg" class="muted" role="status"></span></form></section>
+            <label>Spot (optional) <input name="spot" type="number" step="0.01" min="0"></label><button class="btn on" type="submit">Import</button><span id="oc-msg" class="muted" role="status"></span></form></details></section>
         <div id="oc-body"><p class="muted pad">Loading…</p></div>`,
       after() {
         const form = $('#oc-form'), msg = $('#oc-msg');
         const n = (v, dp = 0) => (v == null ? '—' : money(v, dp));
         const loadMeta = () => api('/api/options/meta').then((m) => {
           const s = m.scheduler || {};
-          $('#oc-inbox').textContent = s.inbox || '';
-          $('#oc-int').textContent = s.intervalSeconds ? durText(s.intervalSeconds) : 'never (disabled)';
+          if (m.auto) {   // the app fetches the data itself: no upload needed; manual import stays available but tucked away
+            const f = m.feed || {};
+            $('#oc-h').textContent = 'Option chain data';
+            $('#oc-p').innerHTML = `${esc(f.source || '')}. ${f.tradeDate ? `Latest file: trading day ${esc(fmtDate(f.tradeDate))}. ` : ''}${f.lastCheck ? `Checked ${esc(ageText(new Date(f.lastCheck * 1000).toISOString()))}. ` : ''}${f.result ? `Status: ${esc(f.result)}. ` : ''}<button class="btn small" id="oc-check" type="button">Check for a newer file</button>`;
+            $('#oc-manual').open = false; $('#oc-sum').textContent = 'Import your own CSV instead (optional)';
+            const chk = $('#oc-check'); if (chk) chk.onclick = () => { chk.disabled = true; api('/api/options/meta?refresh=1', { timeoutMs: 60000 }).then(() => { loadMeta().then(() => loadChain(true)); }).catch(() => { chk.disabled = false; }); };
+          } else {
+            $('#oc-inbox').textContent = s.inbox || '';
+            $('#oc-int').textContent = s.intervalSeconds ? durText(s.intervalSeconds) : 'never (disabled)';
+          }
           const have = [...new Set(['NIFTY', 'BANKNIFTY', 'FINNIFTY', ...(m.symbols || [])])], cur = form.elements.sym.value || store.get('ml.ocsym', 'NIFTY');
           form.elements.sym.innerHTML = have.map((x) => `<option ${x === cur ? 'selected' : ''}>${esc(x)}</option>`).join('');
-          $('#oc-refresh').textContent = s.lastRun ? `Last scan ${ageText(new Date(s.lastRun * 1000).toISOString())}; next in about ${durText(Math.max(0, (s.nextRun || 0) - Date.now() / 1000))}.` : '';
+          if (!m.auto) $('#oc-refresh').textContent = s.lastRun ? `Last scan ${ageText(new Date(s.lastRun * 1000).toISOString())}; next in about ${durText(Math.max(0, (s.nextRun || 0) - Date.now() / 1000))}.` : '';
         }).catch(() => {});
         const loadChain = (quiet) => {
           const s = form.elements.sym.value || store.get('ml.ocsym', 'NIFTY'), e = form.elements.expiry.value;
@@ -241,13 +250,13 @@ startVitals();
             const S = d.summary, maxOi = Math.max(1, ...d.rows.map((r) => Math.max(r.ce?.oi || 0, r.pe?.oi || 0)));
             const bar = (v, c) => `style="background:linear-gradient(to ${c === 'ce' ? 'left' : 'right'},var(--${c === 'ce' ? 'down' : 'up'}-bg) ${((v || 0) / maxOi) * 100}%,transparent 0)"`;
             const m = d.meta || {};
-            $('#oc-body').innerHTML = `<p class="muted">${esc(d.symbol || s)} · expiry ${esc(d.expiry || '—')} · source: ${esc(m.source || d.tool || '—')}${m.filename ? ` (${esc(m.filename)})` : ''}${m.capturedAt ? ` · captured ${esc(ageText(m.capturedAt))}` : ''}${d.warning ? ` · <span class="down">${esc(d.warning)}</span>` : ''}</p>
+            $('#oc-body').innerHTML = `<p class="muted">${esc(d.symbol || s)} · expiry ${esc(d.expiry || '—')} · source: ${m.tradeDate ? `NSE end-of-day file, trading day ${esc(fmtDate(m.tradeDate))}` : esc(m.source || d.tool || '—')}${m.filename && !m.tradeDate ? ` (${esc(m.filename)})` : ''}${m.capturedAt ? ` · captured ${esc(ageText(m.capturedAt))}` : ''}${d.warning ? ` · <span class="down">${esc(d.warning)}</span>` : ''}</p>
               <div class="stats"><div class="stat"><span class="muted">Spot${d.spotEstimated ? ' (estimated from put-call parity)' : ''}</span><b>${n(d.spot, 2)}</b></div><div class="stat"><span class="muted">PCR (put/call OI)</span><b>${S.pcr ?? '—'}</b></div>
               <div class="stat"><span class="muted">Max pain</span><b>${n(S.maxPain)}</b></div><div class="stat"><span class="muted">Call OI · Put OI</span><b>${n(S.ceOi)} · ${n(S.peOi)}</b></div></div>
               <section class="card"><div class="scroll"><table class="tbl oc"><thead><tr><th colspan="5" class="num">CALLS</th><th class="num">Strike</th><th colspan="5">PUTS</th></tr>
               <tr><th class="num">OI</th><th class="num">Chg OI</th><th class="num">Vol</th><th class="num">IV</th><th class="num">LTP</th><th></th><th class="num">LTP</th><th class="num">IV</th><th class="num">Vol</th><th class="num">Chg OI</th><th class="num">OI</th></tr></thead><tbody>
               ${d.rows.map((r) => { const c = r.ce || {}, p = r.pe || {}; return `<tr class="${r.strike === S.atm ? 'atm' : ''}"><td class="num" ${bar(c.oi, 'ce')}>${n(c.oi)}</td><td class="num">${n(c.chgOi)}</td><td class="num">${n(c.vol)}</td><td class="num">${n(c.iv, 1)}</td><td class="num">${n(c.ltp, 2)}</td>
-                <td class="num strike">${n(r.strike)}</td><td class="num">${n(p.ltp, 2)}</td><td class="num">${n(p.iv, 1)}</td><td class="num">${n(p.vol)}</td><td class="num">${n(p.chgOi)}</td><td class="num" ${bar(p.oi, 'pe')}>${n(p.oi)}</td></tr>`; }).join('')}</tbody></table></div></section>`;
+                <td class="num strike">${n(r.strike)}</td><td class="num">${n(p.ltp, 2)}</td><td class="num">${n(p.iv, 1)}</td><td class="num">${n(p.vol)}</td><td class="num">${n(p.chgOi)}</td><td class="num" ${bar(p.oi, 'pe')}>${n(p.oi)}</td></tr>`; }).join('')}</tbody></table></div>${m.tradeDate ? '<p class="muted pad">End-of-day figures: LTP is the closing price. NSE’s file has no implied volatility or bid/ask, so those show as —.</p>' : ''}</section>`;
           }).catch((err) => { $('#oc-body').innerHTML = `<section class="card"><p>Could not load the option chain.</p><p class="muted">${esc(err.message)}</p></section>`; });
         };
         form.addEventListener('submit', (ev) => { ev.preventDefault(); loadChain(); });
@@ -522,7 +531,8 @@ startVitals();
   window.addEventListener('resize', drawQuoteChart);
   route();
   // refresh quotes every minute (the server caches and falls back to a saved snapshot)
-  setInterval(() => D.refresh().then(() => { updates = buildUpdates(); paintLive(); }).catch(() => {}), 60000);
+  const refreshLoop = () => D.refresh().then(() => { updates = buildUpdates(); paintLive(); }).catch(() => {}).finally(() => setTimeout(refreshLoop, D.refreshing ? 3000 : 60000));   // quick polls while a background refresh runs
+  setTimeout(refreshLoop, D.refreshing ? 3000 : 60000);
   // dividend yields and sparklines arrive in the background
   D.loadExtras(() => { paintLive(); D.onAnalysis && D.onAnalysis(); const h = location.hash; if ((h === '' || h === '#/' || h === '#/markets') && (!document.activeElement || document.activeElement === document.body)) route(); });
   D.loadSentiment(() => { D.onAnalysis && D.onAnalysis(); });

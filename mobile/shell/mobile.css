@@ -1,0 +1,16 @@
+/* Phone shell (loaded only by the mobile build). Keeps the app clear of the status bar, the camera cut-out, rounded corners
+ * and the gesture bar. Insets come from two places so one of them is always right: the browser's env(safe-area-inset-*)
+ * (needs viewport-fit=cover, set in index.html) and Capacitor's injected --safe-area-inset-* variables. */
+:root {
+  --sat: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --sab: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --sal: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+  --sar: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
+}
+html.native body { padding-left: var(--sal); padding-right: var(--sar); }
+/* The app starts about 1 cm below the top edge, and never closer than the status bar / cut-out plus a little air. */
+html.native header.top { padding-top: max(1cm, calc(var(--sat) + 10px)); }
+html.native footer { padding-bottom: calc(var(--sab) + var(--space-4, 16px)); }
+html.native main { min-height: 60vh; }
+/* No rubber-band scrolling of the whole page, and no grey flash when tapping. */
+html.native { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }

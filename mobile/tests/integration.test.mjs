@@ -15,11 +15,12 @@ function tool(name, a) {
     case 'get_index_snapshot': return { indices: [{ indexName: 'NIFTY 50', close: 24500, pointsChange: 100, pe: 22, pb: 3.5, divYield: 1.3, pctChange: 0.41 }] };
     case 'get_market_mood': return { date: '2026-10-23' };
     case 'get_market_breadth': return { date: '2026-10-23' };
-    case 'get_top_by_volume': return { stocks: SYMS.map((s) => ({ symbol: s, series: 'EQ' })) };
+    case 'get_top_by_volume': return { stocks: SYMS.map((s) => ({ symbol: s, series: 'EQ', traded_value: 35e9 })) };
+    case 'get_bulk_quote': return { count: a.symbols.length, quotes: a.symbols.map((symbol) => ({ symbol, close: 3500, open: 3460, high: 3520, low: 3440, prev_close: 3450, pct_change: 1.4, volume: 1000, date: '2026-10-23' })) };
     case 'cm_get_stock_quote': return { stock: { lastTradedPrice: 3500, preClosePrice: 3450, openPrice: 3460, highPrice: 3520, lowPrice: 3440, volume: 1000, value: 35, fiftyTwoWeekHigh: 4000, fiftyTwoWeekLow: 3000, perChange30d: 6.2, latestTimestamp: 't' } };
     case 'get_stock_history': return { data: closes.map((c, i) => ({ date: `2026-01-${String(i % 28 + 1).padStart(2, '0')}`, open: c, high: c + 1, low: c - 1, close: c, volume: 10 })), summary: {} };
     case 'get_corporate_actions': return { actions: [{ actionType: 'DIVIDEND', exDate: '2026-05-01', purpose: 'Dividend Rs 20 per share' }] };
-    case 'get_52_week_high_low': return { high: 4000, low: 3000 };
+    case 'get_52_week_high_low': return { '52w_high': 4000, '52w_low': 3000 };
     case 'search_symbols': return { results: [{ symbol: 'TCSELXSI', name: 'x' }] };
     default: throw new Error('unknown tool ' + name);
   }
@@ -28,7 +29,7 @@ function tool(name, a) {
 const RSS = (t) => `<?xml version="1.0"?><rss version="2.0"><channel><item><title>${t}</title><link>https://example.com/${encodeURIComponent(t)}</link><pubDate>Fri, 23 Oct 2026 10:00:00 GMT</pubDate></item></channel></rss>`;
 
 function fakeNet({ flaky = true, blockWith = 0 } = {}) {
-  const calls = { post: 0, rss: 0, blocked: 0 };
+  const calls = { post: 0, rss: 0, blocked: 0, tools: {} };
   let n = 0, inflight = 0, seed = 12345;
   const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
   calls.maxInflight = 0;
@@ -43,6 +44,7 @@ function fakeNet({ flaky = true, blockWith = 0 } = {}) {
       if (body.method === 'initialize') return new Response('{"jsonrpc":"2.0","id":1,"result":{}}', { status: 200, headers: { 'Mcp-Session-Id': 'sid' + ++n } });
       if (body.method === 'notifications/initialized') return new Response('', { status: 404 });   // NSE quirk
       if (flaky && rand() < 0.5) return new Response('not found', { status: 404 });                  // wrong backend for the session
+      calls.tools[body.params.name] = (calls.tools[body.params.name] || 0) + 1;
       const out = tool(body.params.name, body.params.arguments);
       return new Response('event: message\ndata: ' + JSON.stringify({ jsonrpc: '2.0', id: 2, result: { content: [{ type: 'text', text: JSON.stringify(out) }] } }) + '\n\n', { status: 200 });
     } finally { inflight--; }
@@ -50,7 +52,8 @@ function fakeNet({ flaky = true, blockWith = 0 } = {}) {
   return { fetchFn, calls };
 }
 
-const make = (net, extra = {}) => createEngine({ storage: new MemoryStorage(), fetchFn: net.fetchFn, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, nseDelayMs: 0, feedDelayMs: 0, ...extra } });
+const NOFILE = { fetchLatest: async () => null };
+const make = (net, extra = {}) => createEngine({ storage: new MemoryStorage(), fetchFn: net.fetchFn, optionSource: NOFILE, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, nseDelayMs: 0, feedDelayMs: 0, ...extra } });
 const get = (e, p, token) => e.handle('GET', p, { token });
 const post = (e, p, body, token, headers = H) => e.handle('POST', p, { token, headers, body: typeof body === 'string' ? body : JSON.stringify(body) });
 const ACCT = { name: 'Asha Rao', email: 'asha@example.com', dob: '1990-04-02', userId: 'asha.rao', password: 'tulip-orbit-77x' };
@@ -134,10 +137,15 @@ test('NSE 403 opens the circuit breaker: later calls make no network request, sa
   const blocked = fakeNet({ blockWith: 403 });
   e = mk(blocked);
   e.cache.clear();
+  const first = await get(e, '/api/bootstrap', t);                       // answers at once from the saved copy...
+  assert.equal(first.status, 200);
+  assert.equal(first.body.stocks.length, 3);
+  for (let i = 0; i < 100 && (await get(e, '/api/bootstrap', t)).body.refreshing; i++) await new Promise((r) => setTimeout(r, 10));   // ...while the refresh runs and is refused
   const b = await get(e, '/api/bootstrap', t);
   assert.equal(b.status, 200);
-  assert.equal(b.body.stale, true);                                                                           // last good snapshot, flagged
+  assert.equal(b.body.stale, true);                                       // last good snapshot, flagged
   assert.match(b.body.staleReason, /HTTP 403/);
+  await new Promise((r) => setTimeout(r, 30));                            // let requests that were already in flight when the block arrived finish
   const before = blocked.calls.post;
   e.cache.clear();
   const again = await get(e, '/api/bootstrap', t);
@@ -174,7 +182,6 @@ test('option chain: import CSV, duplicate detection, rejection reasons, audit ch
   const csv = ['OI,CHNG IN OI,VOLUME,IV,LTP,CHNG,BID,ASK,STRIKE,BID,ASK,CHNG,LTP,IV,VOLUME,CHNG IN OI,OI',
     '100,1,2,12,200,1,1,1,24400,1,1,1,50,13,5,1,300', '200,1,2,12,150,1,1,1,24500,1,1,1,100,13,5,1,250', '300,1,2,12,95,1,1,1,24600,1,1,1,150,13,5,1,150'].join('\n');
   const q = '/api/options/import?filename=option-chain-ED-NIFTY-27-Oct-2026.csv';
-  assert.equal((await get(e, '/api/options', t)).body.available, false);
   const r1 = await post(e, q, csv, t, { ...H, 'content-type': 'text/csv' });
   assert.deepEqual([r1.status, r1.body.status], [200, 'stored']);
   assert.equal((await post(e, q, csv, t)).body.status, 'duplicate');
@@ -188,7 +195,7 @@ test('option chain: import CSV, duplicate detection, rejection reasons, audit ch
   assert.equal(chain.rows.length, 3);
   assert.equal(chain.summary.pcr, 1.167);   // puts 700 / calls 600
   assert.equal(chain.spotEstimated, true);
-  assert.deepEqual((await get(e, '/api/options/meta', t)).body.symbols, ['NIFTY']);
+  assert.deepEqual((await get(e, '/api/options/meta', t)).body.symbols.slice(0, 2), ['NIFTY', 'BANKNIFTY']);
   const log = (await get(e, '/api/audit', t)).body;
   assert.deepEqual(log.entries.map((x) => x.event).filter((x) => x.startsWith('import')).reverse(), ['import_ok', 'import_duplicate', 'import_rejected']);
   assert.equal(log.verify.ok, true);

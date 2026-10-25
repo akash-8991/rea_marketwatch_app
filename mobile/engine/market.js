@@ -10,6 +10,14 @@ const isoDay = (d) => d.toISOString().slice(0, 10);
 const opt = async (p, dflt) => { try { return await p; } catch (e) { return dflt; } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Change over the last 30 calendar days from daily rows ({date, close}), like NSE's perChange30d. */
+export function pct30(rows) {
+  const last = rows[rows.length - 1], cutoff = isoDay(new Date(new Date(last.date + 'T00:00:00Z').getTime() - 30 * 86400000));
+  let base = null;
+  for (const r of rows) { if (r.date <= cutoff) base = r; else break; }
+  return base && base.close ? analysis.pyRound(((last.close - base.close) / base.close) * 100, 2) : null;
+}
+
 export function ttmDividend(actions, today = new Date()) {
   const cutoff = isoDay(new Date(today.getTime() - 365 * 86400000));
   let total = 0;
@@ -31,30 +39,27 @@ export class Market {
     return ((await this.nse.bh('get_corporate_actions', { symbol: sym, fromDate: frm, toDate: isoDay(today) })).actions) || [];
   }
 
+  /** The home-page universe in a handful of calls: the five index/market calls and the top-50 list run together, then ONE bulk
+   * quote for all symbols (it used to be one call per stock). 52-week range and 30-day change are filled in later by the extras job. */
   async buildBootstrap() {
     const n = this.nse;
-    const pLive = n.cm('cm_get_live_indices', { group: '', nameFilter: '' }), pSnap = n.bh('get_index_snapshot', { date: '', filter: '' });
-    const pMood = n.bh('get_market_mood', { date: '' }), pBreadth = n.bh('get_market_breadth', { date: '' });
-    const pTop = n.bh('get_top_by_volume', { date: '', n: this.universeSize + 60, sortBy: 'value' });
-    [pLive, pSnap, pMood, pBreadth].forEach((p) => p.catch(() => {}));
-    const top = await pTop;   // required: defines the stock universe
-    const syms = (top.stocks || []).filter((s) => s.series === 'EQ').slice(0, this.universeSize).map((s) => s.symbol);
-    const qs = syms.map((s) => opt(n.cm('cm_get_stock_quote', { symbol: s }), {}));
-    const [live, snap, mood, breadth] = [await opt(pLive, {}), await opt(pSnap, {}), await opt(pMood, {}), await opt(pBreadth, {})];
-    const quotes = Object.fromEntries(syms.map((s, i) => [s, null]));
-    (await Promise.all(qs)).forEach((q, i) => { quotes[syms[i]] = (q && q.stock) || {}; });
+    const settle = [n.cm('cm_get_live_indices', { group: '', nameFilter: '' }), n.bh('get_index_snapshot', { date: '', filter: '' }), n.bh('get_market_mood', { date: '' }), n.bh('get_market_breadth', { date: '' })];
+    settle.forEach((p) => p.catch(() => {}));
+    const top = await n.bh('get_top_by_volume', { date: '', n: 50, sortBy: 'value' });   // required: defines the stock universe (the tool returns at most 50)
+    const eq = (top.stocks || []).filter((s) => s.series === 'EQ').slice(0, this.universeSize);
+    const syms = eq.map((s) => s.symbol), turnover = Object.fromEntries(eq.map((s) => [s.symbol, s.traded_value]));
+    const chunks = []; for (let i = 0; i < syms.length; i += 50) chunks.push(syms.slice(i, i + 50));
+    const bulk = (await Promise.all(chunks.map((c) => n.bh('get_bulk_quote', { symbols: c })))).flatMap((r) => r.quotes || []);
+    const [live, snap, mood, breadth] = await Promise.all(settle.map((p) => opt(p, {})));
 
     const liveIdx = {};
     Object.values(live.indices || {}).forEach((group) => group.forEach((i) => { liveIdx[i.indexName.toUpperCase()] = i; }));
     const snapIdx = Object.fromEntries((snap.indices || []).map((i) => [i.indexName.toUpperCase(), i]));
 
-    const stocks = [];
-    for (const sym of syms) {
-      const q = quotes[sym];
-      if (!q.lastTradedPrice) continue;
-      stocks.push({ sym, sector: SECTOR_MAP[sym] || 'Other', price: q.lastTradedPrice, prev: q.preClosePrice, open: q.openPrice, high: q.highPrice, low: q.lowPrice,
-        volume: q.volume, valueCr: q.value, hi52: q.fiftyTwoWeekHigh, lo52: q.fiftyTwoWeekLow, pct30: q.perChange30d, ts: q.latestTimestamp });
-    }
+    const stocks = bulk.filter((q) => q.close).map((q) => ({
+      sym: q.symbol, sector: SECTOR_MAP[q.symbol] || 'Other', price: q.close, prev: q.prev_close, open: q.open, high: q.high, low: q.low, volume: q.volume,
+      valueCr: turnover[q.symbol] != null ? analysis.pyRound(turnover[q.symbol] / 1e7, 2) : null, hi52: null, lo52: null, pct30: null, ts: q.date,
+    })).sort((a, b) => syms.indexOf(a.sym) - syms.indexOf(b.sym));
     if (!stocks.length) throw new Error('no quotes returned from NSE MCP');
 
     const idxRow = (name) => {
@@ -82,18 +87,22 @@ export class Market {
       if (age !== null && age < 6 * 3600) return false;
       const job = (this.extrasJob = { state: 'running', done: 0, total: syms.length });
       (async () => {
-        const data = {};
-        for (const sym of syms) {   // sequential: the NSE client already caps concurrency, and a phone should stay polite
-          const out = { spark: [], closes: [], actions: null };
-          try {
-            const h = await this.nse.bh('get_stock_history', { symbol: sym, months: 3, endDate: '' });
-            const closes = (h.data || []).filter((r) => r.close).map((r) => r.close);
+        const data = {}, queue = [...syms];
+        const one = async (sym) => {
+          const out = { spark: [], closes: [], actions: null, hi52: null, lo52: null, pct30: null };
+          const [h, r, a] = await Promise.all([opt(this.nse.bh('get_stock_history', { symbol: sym, months: 3, endDate: '' }), null),
+            opt(this.nse.bh('get_52_week_high_low', { symbol: sym }), null), opt(this.corpActions(sym, 3), null)]);
+          if (h) {
+            const rows = (h.data || []).filter((x) => x.close), closes = rows.map((x) => x.close);
             out.closes = closes.slice(-70); out.spark = closes.slice(-22);
-          } catch (e) { /* leave empty */ }
-          try { out.actions = await this.corpActions(sym, 3); } catch (e) { /* leave null */ }
+            if (rows.length) out.pct30 = pct30(rows);
+          }
+          if (r) { out.hi52 = r['52w_high'] ?? null; out.lo52 = r['52w_low'] ?? null; }
+          out.actions = a;
           data[sym] = out; job.done++;
-          if (!this.nse.available()) break;
-        }
+        };
+        // two workers, matching the NSE client's two lanes: no burst, no idle lane
+        await Promise.all([0, 1].map(async () => { while (queue.length && this.nse.available()) await one(queue.shift()); }));
         if (Object.values(data).some((v) => v.closes.length || v.actions !== null)) await this.snaps.put('extras', data);
         job.state = 'idle';
       })();
@@ -108,7 +117,7 @@ export class Market {
       const div = acts !== null && acts !== undefined ? ttmDividend(acts, this.now()) : null;
       const tech = analysis.technicalFromHistory(e.closes || [], price);
       const fund = acts !== null && acts !== undefined ? analysis.fundamental(div, price, acts, s.sector, ctx, this.now()) : null;
-      out[sym] = { spark: e.spark || [], divTtm: div, tech, fund };
+      out[sym] = { spark: e.spark || [], divTtm: div, tech, fund, hi52: e.hi52 ?? null, lo52: e.lo52 ?? null, pct30: e.pct30 ?? null };
     }
     return out;
   }
