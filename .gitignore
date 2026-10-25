@@ -22,3 +22,9 @@ marketlens-data/
 .vscode/
 *.log
 *.tmp
+
+# Mobile build output and tooling
+mobile/www/
+mobile/node_modules/
+mobile/android/
+mobile/ios/

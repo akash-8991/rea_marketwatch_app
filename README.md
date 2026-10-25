@@ -24,6 +24,12 @@ Python standard library.
 **Full installation and deployment guide: [docs/INSTALL.md](docs/INSTALL.md)** (install options, data locations, running
 in the background, upgrade and backup, troubleshooting).
 
+## Phone app (Android)
+A standalone Android app (no computer or server needed) is built from the same web interface plus a JavaScript copy of
+the engine: **[docs/MOBILE.md](docs/MOBILE.md)** covers installing the `.apk` from a GitHub Release, what differs from the
+desktop version, limits, building it yourself, and the iPhone plan (iPhone is not built yet; it needs a Mac with Xcode).
+It has not been run on a real phone yet; the doc lists exactly what has and has not been verified.
+
 ## Install and run
 
 Requires Python 3.9 or newer (tested on 3.12, 3.13 and 3.14; 3.9-3.11 are untested).
@@ -169,6 +175,10 @@ PYTHONPATH=src python -m unittest discover -s tests     # offline tests, no netw
 python tools/loadtest.py --url http://127.0.0.1:8080 --concurrency 1 16 --seconds 8   # load test your own local server
 pip wheel . --no-deps -w dist                           # build the wheel
 ```
+
+Mobile engine tests (Node 22+, no dependencies): `cd mobile && node --test tests/`. They compare the JavaScript engine with
+the Python engine's output stored in `mobile/tests/golden.json` (regenerate with
+`PYTHONPATH=src python3 mobile/scripts/gen-golden.py`).
 
 Layout: `src/marketlens/` (`nse.py` MCP client and rate limiting, `market.py` data assembly, `analysis.py` scoring,
 `news.py` feeds and sentiment, `options.py` option-chain adapter, `optiondb.py` SQLite store, CSV parser and audit log,

@@ -1,0 +1,1095 @@
+{
+ "auditRows": [
+  {
+   "actor": "system",
+   "channel": "system",
+   "detail": "golden",
+   "entryHash": "3cf9746c780e86a47a17ee3cbacffd92a8036fbc0efbe394fb8b548af30fdd48",
+   "event": "startup",
+   "id": 1,
+   "outcome": "ok",
+   "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+   "requestId": null,
+   "schemaVer": 2,
+   "sha256": null,
+   "snapshotId": null,
+   "symbol": null,
+   "ts": "2026-10-25T16:26:32+00:00",
+   "uid": "6cc73a0f7eb04baba450224030af2e2a"
+  },
+  {
+   "actor": "tester",
+   "channel": "internal",
+   "detail": "NIFTY 27-Oct-2026 from csv:x: 3 strikes",
+   "entryHash": "5ccc797212408d6b8772b5aa83c8582423836b13b1c6bd1ce6a0dd17ab1aeff2",
+   "event": "import_ok",
+   "id": 2,
+   "outcome": "ok",
+   "prevHash": "3cf9746c780e86a47a17ee3cbacffd92a8036fbc0efbe394fb8b548af30fdd48",
+   "requestId": null,
+   "schemaVer": 2,
+   "sha256": "abababababababababababababababababababababababababababababababab",
+   "snapshotId": 1,
+   "symbol": "NIFTY",
+   "ts": "2026-10-25T16:26:32+00:00",
+   "uid": "66f5b9d6d5e443f1a4b192943fac24e8"
+  },
+  {
+   "actor": "anonymous",
+   "channel": "web",
+   "detail": "incorrect user ID or password",
+   "entryHash": "ad25c0981e8ccca3b9dad3b73baea931b299e85569423600dc7b10be50a9d94d",
+   "event": "login_failed",
+   "id": 3,
+   "outcome": "denied",
+   "prevHash": "5ccc797212408d6b8772b5aa83c8582423836b13b1c6bd1ce6a0dd17ab1aeff2",
+   "requestId": "req-1",
+   "schemaVer": 2,
+   "sha256": null,
+   "snapshotId": null,
+   "symbol": null,
+   "ts": "2026-10-25T16:26:32+00:00",
+   "uid": "5c20fa05d62c4d07a31c4c38013f93e7"
+  }
+ ],
+ "badCsv": {
+  "few": "could not find an OI column on both the calls and puts side",
+  "no_header": "no STRIKE column header found; expected NSE's option-chain CSV (CALLS | STRIKE | PUTS)"
+ },
+ "csv": "Underlying Value,24500\nOI,CHNG IN OI,VOLUME,IV,LTP,CHNG,BID,ASK,STRIKE,BID,ASK,CHNG,LTP,IV,VOLUME,CHNG IN OI,OI\n\"1,200\",100,50,12.5,220.5,5,220,221,24,400,60,61,-2,60.5,13.1,70,-10,3,400\n900,-,40,11.9,150.0,3,149,151,24500,100,101,-1,100.2,12.2,90,20,2500\n700,30,30,11.2,95.0,2,94,96,24600,150,151,1,151.0,11.9,85,40,1800\n300,10,20,10.9,60.0,1,59,61,24700,210,211,2,210.0,12.8,60,5,900",
+ "ctx": {
+  "benchPE": 22.1,
+  "benchYield": 1.3,
+  "sectors": {
+   "Banking": {
+    "divYield": 0.9,
+    "name": "NIFTY BANK",
+    "pb": 2.1,
+    "pe": 14.2
+   }
+  }
+ },
+ "estSpot": 24549.8,
+ "fnGuess": [
+  [
+   "NIFTY",
+   "27-Oct-2026"
+  ],
+  [
+   "RELIANCE",
+   "3-Nov-2026"
+  ],
+  [
+   null,
+   null
+  ]
+ ],
+ "fund": {
+  "none-actions": {
+   "basis": "no corporate-action data loaded yet",
+   "label": "No data",
+   "score": null,
+   "sectorPB": null,
+   "sectorPE": null,
+   "sectorYield": null,
+   "signals": [],
+   "yield": null
+  },
+  "one": {
+   "basis": "dividends and corporate actions published by NSE; no earnings, debt or growth data",
+   "bonusOrSplit": 0,
+   "dividendYears": 1,
+   "dividendsTtm": 4,
+   "label": "Moderate income",
+   "score": 0.0,
+   "sectorPB": 2.1,
+   "sectorPE": 14.2,
+   "sectorYield": 0.9,
+   "signals": [
+    {
+     "name": "Dividend yield vs Nifty 50",
+     "note": "0.50% vs index 1.30%",
+     "value": 0
+    },
+    {
+     "name": "Dividend consistency",
+     "note": "dividends in 1 of the last 3 calendar years",
+     "value": 0
+    }
+   ],
+   "yield": 0.5
+  },
+  "rich": {
+   "basis": "dividends and corporate actions published by NSE; no earnings, debt or growth data",
+   "bonusOrSplit": 1,
+   "dividendYears": 3,
+   "dividendsTtm": 30,
+   "label": "Income-oriented",
+   "score": 1.0,
+   "sectorPB": 2.1,
+   "sectorPE": 14.2,
+   "sectorYield": 0.9,
+   "signals": [
+    {
+     "name": "Dividend yield vs Nifty 50",
+     "note": "3.00% vs index 1.30%",
+     "value": 1
+    },
+    {
+     "name": "Dividend consistency",
+     "note": "dividends in 3 of the last 3 calendar years",
+     "value": 1
+    }
+   ],
+   "yield": 3.0
+  },
+  "unknown": {
+   "basis": "no corporate-action data loaded yet",
+   "label": "No data",
+   "score": null,
+   "sectorPB": null,
+   "sectorPE": null,
+   "sectorYield": null,
+   "signals": [],
+   "yield": null
+  },
+  "zero": {
+   "basis": "dividends and corporate actions published by NSE; no earnings, debt or growth data",
+   "bonusOrSplit": 0,
+   "dividendYears": 0,
+   "dividendsTtm": 0,
+   "label": "Little or no dividend income",
+   "score": -1.0,
+   "sectorPB": null,
+   "sectorPE": null,
+   "sectorYield": null,
+   "signals": [
+    {
+     "name": "Dividend yield vs Nifty 50",
+     "note": "no dividend in the last 12 months",
+     "value": -1
+    },
+    {
+     "name": "Dividend consistency",
+     "note": "dividends in 0 of the last 3 calendar years",
+     "value": -1
+    }
+   ],
+   "yield": 0.0
+  }
+ },
+ "fundCases": [
+  [
+   "rich",
+   30,
+   1000,
+   [
+    {
+     "actionType": "DIVIDEND",
+     "exDate": "2026-02-15",
+     "purpose": "Dividend - Rs 5 Per Share"
+    },
+    {
+     "actionType": "DIVIDEND",
+     "exDate": "2025-05-15",
+     "purpose": "Dividend - Rs 5 Per Share"
+    },
+    {
+     "actionType": "DIVIDEND",
+     "exDate": "2024-08-15",
+     "purpose": "Dividend - Rs 5 Per Share"
+    },
+    {
+     "actionType": "BONUS",
+     "exDate": "2025-01-10",
+     "purpose": "Bonus 1:1"
+    }
+   ],
+   "Banking"
+  ],
+  [
+   "zero",
+   0,
+   500,
+   [],
+   "IT"
+  ],
+  [
+   "unknown",
+   null,
+   500,
+   null,
+   null
+  ],
+  [
+   "one",
+   4,
+   800,
+   [
+    {
+     "actionType": "DIVIDEND",
+     "exDate": "2026-02-15",
+     "purpose": "Dividend - Rs 5 Per Share"
+    }
+   ],
+   "Banking"
+  ],
+  [
+   "none-actions",
+   null,
+   100,
+   [],
+   "Auto"
+  ]
+ ],
+ "headlines": [
+  "Sensex surges to record high as banks rally",
+  "Stock falls sharply after fraud probe",
+  "Company does not beat estimates",
+  "Record date announced for dividend",
+  "Nifty ends flat amid uncertainty",
+  "TCS wins large deal, shares jump",
+  "Profit warning hits shares, analysts downgrade",
+  "",
+  "Markets rebound but concern over inflation remains"
+ ],
+ "merged": [
+  {
+   "link": "https://news.google.com/x",
+   "provider": "google",
+   "published": "2026-10-23T11:30+00:00",
+   "source": "Reuters",
+   "title": "Stocks slip on weak data",
+   "ts": 1792755000.0
+  },
+  {
+   "link": "https://example.com/a",
+   "provider": "yahoo",
+   "published": "2026-10-23T10:00+00:00",
+   "source": "Yahoo Finance",
+   "title": "Sensex jumps & Nifty rallies",
+   "ts": 1792749600.0
+  },
+  {
+   "link": "https://news.google.com/y",
+   "provider": "google",
+   "published": "2026-10-23T09:00+00:00",
+   "source": "Bloomberg",
+   "title": "Fed - what next?",
+   "ts": 1792746000.0
+  }
+ ],
+ "parsed": {
+  "expiry": "27-Oct-2026",
+  "rows": [
+   {
+    "ce": {
+     "ask": 221.0,
+     "bid": 220.0,
+     "chg": 5.0,
+     "chgOi": 100.0,
+     "iv": 12.5,
+     "ltp": 220.5,
+     "oi": 1200.0,
+     "vol": 50.0
+    },
+    "pe": {
+     "ask": 60.0,
+     "bid": 400.0,
+     "chg": 61.0,
+     "chgOi": 70.0,
+     "iv": 60.5,
+     "ltp": -2.0,
+     "oi": -10.0,
+     "vol": 13.1
+    },
+    "strike": 24.0
+   },
+   {
+    "ce": {
+     "ask": 151.0,
+     "bid": 149.0,
+     "chg": 3.0,
+     "chgOi": null,
+     "iv": 11.9,
+     "ltp": 150.0,
+     "oi": 900.0,
+     "vol": 40.0
+    },
+    "pe": {
+     "ask": 101.0,
+     "bid": 100.0,
+     "chg": -1.0,
+     "chgOi": 20.0,
+     "iv": 12.2,
+     "ltp": 100.2,
+     "oi": 2500.0,
+     "vol": 90.0
+    },
+    "strike": 24500.0
+   },
+   {
+    "ce": {
+     "ask": 96.0,
+     "bid": 94.0,
+     "chg": 2.0,
+     "chgOi": 30.0,
+     "iv": 11.2,
+     "ltp": 95.0,
+     "oi": 700.0,
+     "vol": 30.0
+    },
+    "pe": {
+     "ask": 151.0,
+     "bid": 150.0,
+     "chg": 1.0,
+     "chgOi": 40.0,
+     "iv": 11.9,
+     "ltp": 151.0,
+     "oi": 1800.0,
+     "vol": 85.0
+    },
+    "strike": 24600.0
+   },
+   {
+    "ce": {
+     "ask": 61.0,
+     "bid": 59.0,
+     "chg": 1.0,
+     "chgOi": 10.0,
+     "iv": 10.9,
+     "ltp": 60.0,
+     "oi": 300.0,
+     "vol": 20.0
+    },
+    "pe": {
+     "ask": 211.0,
+     "bid": 210.0,
+     "chg": 2.0,
+     "chgOi": 5.0,
+     "iv": 12.8,
+     "ltp": 210.0,
+     "oi": 900.0,
+     "vol": 60.0
+    },
+    "strike": 24700.0
+   }
+  ],
+  "spot": 24510.0,
+  "symbol": "NIFTY"
+ },
+ "pwHash": "pbkdf2_sha256$1000$000102030405060708090a0b0c0d0e0f$02169e674d80c0fc7292e8610c8f17be140df062af9aa33ea85eaabecffdf08d",
+ "rss": {
+  "doctype": "feed rejected: contains a DOCTYPE/ENTITY declaration",
+  "google": [
+   {
+    "link": "https://news.google.com/x",
+    "provider": "google",
+    "published": "2026-10-23T11:30+00:00",
+    "source": "Reuters",
+    "title": "Stocks slip on weak data",
+    "ts": 1792755000.0
+   },
+   {
+    "link": "https://news.google.com/y",
+    "provider": "google",
+    "published": "2026-10-23T09:00+00:00",
+    "source": "Bloomberg",
+    "title": "Fed - what next?",
+    "ts": 1792746000.0
+   }
+  ],
+  "yahoo": [
+   {
+    "link": "https://example.com/a",
+    "provider": "yahoo",
+    "published": "2026-10-23T10:00+00:00",
+    "source": "Yahoo Finance",
+    "title": "Sensex jumps & Nifty rallies",
+    "ts": 1792749600.0
+   }
+  ]
+ },
+ "rssGoogle": "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><item><title>Stocks slip on weak data - Reuters</title><link>https://news.google.com/x</link><pubDate>Fri, 23 Oct 2026 11:30:00 GMT</pubDate><source url=\"https://reuters.com\">Reuters</source></item>\n<item><title><![CDATA[Fed - what next? - Bloomberg]]></title><link>https://news.google.com/y</link><pubDate>Fri, 23 Oct 2026 09:00:00 GMT</pubDate></item></channel></rss>",
+ "rssYahoo": "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><item><title>Sensex jumps &amp; Nifty rallies</title><link>https://example.com/a</link><pubDate>Fri, 23 Oct 2026 10:00:00 +0000</pubDate></item>\n<item><title>Bad link</title><link>javascript:alert(1)</link></item><item><title>No link here</title></item></channel></rss>",
+ "rules": {
+  "histMinCloses": 20,
+  "incHigh": 0.5,
+  "incLow": 0.0,
+  "incYearsFull": 3,
+  "incYieldMult": 1.5,
+  "rsiBearHigh": 45,
+  "rsiBearLow": 30,
+  "rsiBullHigh": 70,
+  "rsiBullLow": 55,
+  "rsiPeriod": 14,
+  "sentBand": 0.15,
+  "sentMaxHeadlines": 8,
+  "sentNet": 2,
+  "smaFast": 20,
+  "smaSlow": 50,
+  "snapDayPct": 0.5,
+  "snapDayWeight": 0.5,
+  "snapMomentumPct": 5,
+  "snapMomentumWeight": 1.5,
+  "snapRangeHigh": 66,
+  "snapRangeLow": 33,
+  "techBand": 0.34
+ },
+ "sent": {
+  "agg_all": {
+   "label": "Negative",
+   "n": 8,
+   "neg": 4,
+   "pos": 2,
+   "score": -0.167
+  },
+  "agg_none": {
+   "label": "No news",
+   "n": 0,
+   "neg": 0,
+   "pos": 0,
+   "score": null
+  },
+  "agg_pos": {
+   "label": "Positive",
+   "n": 3,
+   "neg": 0,
+   "pos": 2,
+   "score": 0.667
+  },
+  "labels": [
+   "Positive",
+   "Negative",
+   "Neutral",
+   "Neutral",
+   "Neutral",
+   "Positive",
+   "Neutral",
+   "Neutral",
+   "Neutral"
+  ],
+  "scores": [
+   [
+    1.0,
+    3,
+    0
+   ],
+   [
+    -1.0,
+    0,
+    3
+   ],
+   [
+    -1.0,
+    0,
+    1
+   ],
+   [
+    0.0,
+    0,
+    0
+   ],
+   [
+    -1.0,
+    0,
+    1
+   ],
+   [
+    1.0,
+    2,
+    0
+   ],
+   [
+    -0.3333333333333333,
+    1,
+    2
+   ],
+   [
+    0.0,
+    0,
+    0
+   ],
+   [
+    0.0,
+    1,
+    1
+   ]
+  ]
+ },
+ "series": {
+  "down": [
+   98.07,
+   95.98,
+   93.71,
+   94.16,
+   92.19,
+   90.71,
+   89.77,
+   90.57,
+   88.5,
+   87.79,
+   87.44,
+   88.26,
+   88.85,
+   89.61,
+   88.28,
+   87.45,
+   86.43,
+   87.24,
+   88.32,
+   86.55,
+   84.91,
+   83.49,
+   82.1,
+   81.56,
+   81.36,
+   80.1,
+   78.03,
+   77.31,
+   76.44,
+   76.19,
+   77.11,
+   77.24,
+   76.82,
+   76.72,
+   76.8,
+   74.97,
+   75.72,
+   76.11,
+   76.8,
+   77.25,
+   76.45,
+   75.69,
+   74.03,
+   73.99,
+   72.25,
+   70.56,
+   69.32,
+   67.96,
+   67.12,
+   65.52,
+   63.81,
+   62.54,
+   61.17,
+   60.47,
+   58.96,
+   59.49,
+   59.4,
+   58.21,
+   57.28,
+   56.59,
+   55.94,
+   54.76,
+   55.2,
+   55.96,
+   55.55,
+   55.18,
+   53.93,
+   52.75,
+   52.1,
+   51.3,
+   51.67,
+   50.66,
+   49.39,
+   49.98,
+   49.74,
+   48.74,
+   48.53,
+   47.32,
+   47.09,
+   47.71
+  ],
+  "flat": [
+   101.45,
+   102.25,
+   101.27,
+   100.73,
+   99.39,
+   100.47,
+   100.6,
+   101.73,
+   101.03,
+   99.91,
+   101.16,
+   103.12,
+   104.58,
+   105.86,
+   107.2,
+   108.23,
+   107.05,
+   107.12,
+   106.51,
+   104.5,
+   102.53,
+   101.62,
+   100.64,
+   101.42,
+   103.27,
+   103.05,
+   104.85,
+   106.9,
+   108.85,
+   108.26,
+   107.05,
+   105.88,
+   104.59,
+   103.35,
+   103.87,
+   105.53,
+   106.97,
+   106.88,
+   107.53,
+   108.82,
+   107.02,
+   107.7,
+   109.47,
+   110.7,
+   111.81,
+   111.71,
+   110.28,
+   111.55,
+   110.81,
+   112.14,
+   114.25,
+   113.78,
+   113.33,
+   115.35,
+   116.39,
+   114.86,
+   113.14,
+   111.56,
+   113.37,
+   114.76,
+   113.14,
+   114.61,
+   116.82,
+   117.55,
+   116.85,
+   117.07,
+   115.35,
+   113.1,
+   115.24,
+   115.93,
+   116.05,
+   118.06,
+   117.75,
+   119.5,
+   121.06,
+   119.66,
+   118.47,
+   117.49,
+   116.27,
+   116.67
+  ],
+  "short": [
+   49.62,
+   49.56,
+   48.93,
+   49.83,
+   49.63,
+   49.65,
+   49.91,
+   50.82,
+   50.76,
+   51.71,
+   51.82,
+   51.99,
+   52.14,
+   51.24,
+   51.22,
+   50.67,
+   49.77,
+   50.47,
+   49.9,
+   49.95,
+   50.5,
+   50.72,
+   50.47,
+   50.6,
+   50.82
+  ],
+  "tiny": [
+   101.14,
+   99.54,
+   99.78,
+   98.78,
+   97.9,
+   98.96,
+   99.0,
+   99.24,
+   100.27,
+   101.93
+  ],
+  "up": [
+   99.9,
+   99.1,
+   100.29,
+   99.18,
+   99.92,
+   99.98,
+   98.81,
+   99.43,
+   98.19,
+   98.52,
+   97.42,
+   96.4,
+   96.69,
+   98.54,
+   97.64,
+   97.15,
+   98.23,
+   100.58,
+   101.49,
+   101.68,
+   104.23,
+   102.96,
+   105.06,
+   104.8,
+   103.94,
+   102.97,
+   102.8,
+   104.72,
+   104.01,
+   104.97,
+   106.19,
+   106.28,
+   107.12,
+   105.89,
+   104.66,
+   104.06,
+   105.43,
+   105.76,
+   105.61,
+   106.61,
+   107.05,
+   106.83,
+   108.73,
+   110.25,
+   109.78,
+   110.77,
+   111.54,
+   113.88,
+   115.61,
+   115.33,
+   118.23,
+   117.14,
+   117.46,
+   119.37,
+   118.42,
+   119.08,
+   117.6,
+   119.1,
+   121.07,
+   122.15,
+   124.72,
+   124.54,
+   126.26,
+   127.49,
+   128.67,
+   129.21,
+   131.75,
+   134.88,
+   135.55,
+   137.25,
+   135.66,
+   137.57,
+   139.21,
+   142.79,
+   145.48,
+   145.1,
+   145.31,
+   147.16,
+   145.23,
+   145.88
+  ]
+ },
+ "snapOut": [
+  {
+   "basis": "single quote (no history loaded yet)",
+   "label": "Bullish",
+   "score": 1.0,
+   "signals": [
+    {
+     "name": "30-day change",
+     "note": "+8.2% over 30 days",
+     "value": 1
+    },
+    {
+     "name": "52-week position",
+     "note": "75% of the 52-week range",
+     "value": 1
+    },
+    {
+     "name": "Day change",
+     "note": "+10.00% today",
+     "value": 1
+    }
+   ]
+  },
+  {
+   "basis": "single quote (no history loaded yet)",
+   "label": "Bearish",
+   "score": -1.0,
+   "signals": [
+    {
+     "name": "30-day change",
+     "note": "-9.5% over 30 days",
+     "value": -1
+    },
+    {
+     "name": "52-week position",
+     "note": "14% of the 52-week range",
+     "value": -1
+    },
+    {
+     "name": "Day change",
+     "note": "-10.00% today",
+     "value": -1
+    }
+   ]
+  },
+  {
+   "basis": "single quote (no history loaded yet)",
+   "label": "Neutral",
+   "score": 0.0,
+   "signals": [
+    {
+     "name": "Day change",
+     "note": "+0.10% today",
+     "value": 0
+    }
+   ]
+  },
+  null,
+  {
+   "basis": "single quote (no history loaded yet)",
+   "label": "Neutral",
+   "score": -0.333,
+   "signals": [
+    {
+     "name": "30-day change",
+     "note": "+0.0% over 30 days",
+     "value": 0
+    },
+    {
+     "name": "52-week position",
+     "note": "17% of the 52-week range",
+     "value": -1
+    },
+    {
+     "name": "Day change",
+     "note": "+0.00% today",
+     "value": 0
+    }
+   ]
+  }
+ ],
+ "snapshots": [
+  {
+   "hi52": 120,
+   "lo52": 80,
+   "pct30": 8.2,
+   "prev": 100,
+   "price": 110
+  },
+  {
+   "hi52": 120,
+   "lo52": 85,
+   "pct30": -9.5,
+   "prev": 100,
+   "price": 90
+  },
+  {
+   "hi52": null,
+   "lo52": null,
+   "pct30": null,
+   "prevClose": 99.9,
+   "price": 100
+  },
+  {
+   "price": null
+  },
+  {
+   "hi52": 100,
+   "lo52": 40,
+   "pct30": 0.0,
+   "prev": 50,
+   "price": 50
+  }
+ ],
+ "summary": {
+  "atm": 24500.0,
+  "ceOi": 3100.0,
+  "maxPain": 24600.0,
+  "pcr": 1.674,
+  "peOi": 5190.0
+ },
+ "tech": {
+  "down": {
+   "basis": "80 daily closes",
+   "label": "Neutral",
+   "macdHist": 0.264,
+   "rsi": 17.0,
+   "score": -0.25,
+   "signals": [
+    {
+     "name": "Price vs SMA 20",
+     "note": "price below the 20-day average 51.67",
+     "value": -1
+    },
+    {
+     "name": "SMA 20 vs SMA 50",
+     "note": "20-day below 50-day average 62.20",
+     "value": -1
+    },
+    {
+     "name": "RSI (14)",
+     "note": "oversold, momentum weak",
+     "value": 0
+    },
+    {
+     "name": "MACD histogram",
+     "note": "MACD above its signal line",
+     "value": 1
+    }
+   ],
+   "sma20": 51.67,
+   "sma50": 62.2
+  },
+  "flat": {
+   "basis": "80 daily closes",
+   "label": "Neutral",
+   "macdHist": -0.325,
+   "rsi": 52.6,
+   "score": -0.25,
+   "signals": [
+    {
+     "name": "Price vs SMA 20",
+     "note": "price below the 20-day average 116.83",
+     "value": -1
+    },
+    {
+     "name": "SMA 20 vs SMA 50",
+     "note": "20-day above 50-day average 112.82",
+     "value": 1
+    },
+    {
+     "name": "RSI (14)",
+     "note": "RSI 52.6",
+     "value": 0
+    },
+    {
+     "name": "MACD histogram",
+     "note": "MACD below its signal line",
+     "value": -1
+    }
+   ],
+   "sma20": 116.83,
+   "sma50": 112.82
+  },
+  "short": {
+   "basis": "25 daily closes",
+   "label": "Bullish",
+   "macdHist": null,
+   "rsi": 57.4,
+   "score": 1.0,
+   "signals": [
+    {
+     "name": "Price vs SMA 20",
+     "note": "price above the 20-day average 50.76",
+     "value": 1
+    },
+    {
+     "name": "RSI (14)",
+     "note": "RSI 57.4",
+     "value": 1
+    }
+   ],
+   "sma20": 50.76,
+   "sma50": null
+  },
+  "tiny": null,
+  "up": {
+   "basis": "80 daily closes",
+   "label": "Bullish",
+   "macdHist": 0.272,
+   "rsi": 81.6,
+   "score": 0.75,
+   "signals": [
+    {
+     "name": "Price vs SMA 20",
+     "note": "price above the 20-day average 136.49",
+     "value": 1
+    },
+    {
+     "name": "SMA 20 vs SMA 50",
+     "note": "20-day above 50-day average 121.73",
+     "value": 1
+    },
+    {
+     "name": "RSI (14)",
+     "note": "overbought, momentum may fade",
+     "value": 0
+    },
+    {
+     "name": "MACD histogram",
+     "note": "MACD above its signal line",
+     "value": 1
+    }
+   ],
+   "sma20": 136.49,
+   "sma50": 121.73
+  }
+ },
+ "techPrice": {
+  "basis": "80 daily closes",
+  "label": "Neutral",
+  "macdHist": 0.272,
+  "rsi": 81.6,
+  "score": 0.25,
+  "signals": [
+   {
+    "name": "Price vs SMA 20",
+    "note": "price below the 20-day average 136.49",
+    "value": -1
+   },
+   {
+    "name": "SMA 20 vs SMA 50",
+    "note": "20-day above 50-day average 121.73",
+    "value": 1
+   },
+   {
+    "name": "RSI (14)",
+    "note": "overbought, momentum may fade",
+    "value": 0
+   },
+   {
+    "name": "MACD histogram",
+    "note": "MACD above its signal line",
+    "value": 1
+   }
+  ],
+  "sma20": 136.49,
+  "sma50": 121.73
+ },
+ "today": "2026-10-25",
+ "ttm": 15.5,
+ "ttmActions": [
+  {
+   "actionType": "DIVIDEND",
+   "exDate": "2026-06-01",
+   "purpose": "Dividend - Rs. 12.50 Per Share"
+  },
+  {
+   "actionType": "DIVIDEND",
+   "exDate": "2024-06-01",
+   "purpose": "Dividend Rs 9"
+  },
+  {
+   "actionType": "DIVIDEND",
+   "exDate": "2026-09-01",
+   "purpose": "Special Dividend INR 3"
+  }
+ ]
+}

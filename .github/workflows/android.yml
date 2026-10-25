@@ -1,0 +1,96 @@
+name: Android app
+
+# Builds the MarketLens Android app (an .apk you can install on a phone).
+#   - every push/PR that touches mobile/ or the shared web UI: run the engine tests
+#   - push to branch `mobile-app`, a tag `mobile-v*`, or a manual run: also build the APK
+#   - tag `mobile-v*`: attach the APK and its checksum to a GitHub Release
+on:
+  push:
+    branches: [main, mobile-app]
+    tags: ['mobile-v*']
+    paths: ['mobile/**', 'src/marketlens/static/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['mobile/**', 'src/marketlens/static/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engine-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: JavaScript engine tests (golden outputs from the Python engine + end-to-end with a fake NSE server)
+        working-directory: mobile
+        run: node --test tests/
+
+  apk:
+    needs: engine-tests
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # only used to create the release on a mobile-v* tag
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: mobile/package-lock.json }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install tooling
+        working-directory: mobile
+        run: |
+          npm ci --no-audit --no-fund
+          python -m pip install pillow
+      - name: Build the web bundle and create the Android project
+        working-directory: mobile
+        run: |
+          node scripts/build-www.mjs
+          npx cap add android
+          python scripts/prepare-android.py --version-code "${{ github.run_number }}"
+          npx cap sync android
+      - name: Use the project's stable signing key, if one is configured
+        # Without it every build gets a new random debug key and phones must uninstall (losing app data) to update.
+        env:
+          KEYSTORE_B64: ${{ secrets.MARKETLENS_DEBUG_KEYSTORE }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            mkdir -p ~/.android && echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            echo "Using the configured keystore"
+          else
+            echo "::warning::No MARKETLENS_DEBUG_KEYSTORE secret: this APK gets a one-off key, so installing a later build over it will require uninstalling first."
+          fi
+      - name: Build the APK
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Name, checksum and inspect the APK
+        id: pack
+        working-directory: mobile
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          OUT="MarketLens-${VERSION}-android.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          ls -l "$OUT"
+          "$ANDROID_HOME"/build-tools/*/aapt2 dump badging "$OUT" | grep -E "^(package|sdkVersion|targetSdkVersion|uses-permission|application-label:)" || true
+          echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarketLens-android
+          path: |
+            mobile/${{ steps.pack.outputs.apk }}
+            mobile/${{ steps.pack.outputs.apk }}.sha256
+          if-no-files-found: error
+      - name: Publish a GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --title "MarketLens for Android ${GITHUB_REF_NAME#mobile-v}" \
+            --notes "Debug-signed APK for sideloading. Install steps and limits: docs/MOBILE.md. Verify with the .sha256 file." \
+            "mobile/${{ steps.pack.outputs.apk }}" "mobile/${{ steps.pack.outputs.apk }}.sha256"
