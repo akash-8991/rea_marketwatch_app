@@ -75,6 +75,8 @@ writes afterwards will not extend a v2 chain correctly; restore the database fro
 Never recorded: passwords, session tokens, names, emails, dates of birth. The actor is the user ID (or `anonymous` for
 failed attempts, so attacker-supplied text cannot be injected into the log).
 Tables: `users`, `sessions` (token hashes only), `throttle` (hashed identifiers, failure counts, lockout level).
+Sessions: a session lasts 15 days from sign-in (no idle timeout), survives closing the app or browser, and ends on sign-out,
+on any credential change, or at 15 days; the UI then returns to the sign-in page. Same on the phone.
 Lockouts: 5 consecutive failures per user ID (sign-in) or per email (recovery); 15 min, then 30, 60 ... up to 24 h; a
 success clears the counter. An attacker can lock a known user out by failing on purpose; the owner clears it with
 `marketlens --reset-password USERID`. `/api/audit` and `/api/metrics` are open to any signed-in user (there are no

@@ -35,6 +35,8 @@ Android 7.0 or newer.
 - **No inbox folder** for CSV files; use the Import button.
 - **Smaller history:** the phone keeps the newest 20 option snapshots per symbol and expiry (the desktop keeps 300).
 - **No `/api/metrics`, rate limiter or load shedding:** there is one user and no network server, so they do not apply.
+- **Sign-in lasts 15 days.** You stay signed in after closing the app until you tap Sign out; the session ends by itself 15 days
+  after sign-in. Sign out returns to the sign-in page.
 - Data lives in the app's private storage. **Uninstalling the app deletes your accounts and saved data.** Backups to
   Google are switched off so that account details never leave the phone.
 
@@ -72,18 +74,30 @@ cd android && ./gradlew assembleDebug      # -> app/build/outputs/apk/debug/app-
 `.github/workflows/android.yml` does exactly this. Pushing a tag such as `mobile-v0.3.0` builds the APK and publishes it
 as a GitHub Release.
 
-**Signing and updates.** The APK is signed with Android's *debug* key so that it installs. That is fine for sideloading;
-Google Play will not accept it. Unless the repository has a stable key, every CI build gets a new random one, and
-**Android refuses to install a build over an app signed with a different key, so you would have to uninstall first, which
-deletes your accounts and saved data.** To avoid that, create one key once and give it to the workflow:
+**Signing and updates.** Android only installs an update over an existing app if both builds are signed with the **same key**.
+The CI build uses a *debug* key (fine for sideloading; Google Play will not accept it). Until the repository has one stable
+key, every build gets a new random one, so a newer APK cannot be installed over an older one: you would have to uninstall
+first, which **deletes your accounts and saved data**. Set the key up once, before you tell people to use the app:
 
-```bash
-keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey \
-  -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-base64 < debug.keystore | gh secret set MARKETLENS_DEBUG_KEYSTORE --repo <owner>/<repo>
-```
-Keep `debug.keystore` private and backed up, and never commit it. For Google Play, create a separate upload keystore and
-switch the workflow to `assembleRelease` with signing secrets.
+1. Create the key file (once, on your own computer, in a folder that is *not* the repository; `*.keystore` is git-ignored as a safety net):
+   ```bash
+   keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey \
+     -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+   ```
+2. Store it as a repository secret (this uploads it encrypted; GitHub never shows it again):
+   ```bash
+   base64 < debug.keystore | gh secret set MARKETLENS_DEBUG_KEYSTORE --repo akash-8991/rea_marketwatch_app
+   ```
+   Or in the browser: repository **Settings > Secrets and variables > Actions > New repository secret**, name
+   `MARKETLENS_DEBUG_KEYSTORE`, value = the output of `base64 < debug.keystore`.
+3. **Back the file up** somewhere private (password manager, encrypted drive). If you lose it you can make a new one, but
+   then everyone must uninstall once. **Never commit it or share it.** Anyone holding it can sign an app that Android treats
+   as an update to yours.
+4. Tag a new version (`mobile-v0.3.2`, see RELEASING.md). The build log should no longer print the "No MARKETLENS_DEBUG_KEYSTORE
+   secret" warning. From then on, every build installs over the previous one and keeps its data.
+
+The password `android` is the standard debug-key password; the secret is the file itself. For Google Play, create a separate
+upload keystore with a real password, store both as secrets and switch the workflow to `assembleRelease`.
 
 ## 7. iPhone (later)
 Not built, and not possible from this repository's current environment. What it needs:

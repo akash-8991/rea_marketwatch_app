@@ -67,7 +67,8 @@ or `docker compose up -d` with the repository's `docker-compose.yml` (read-only 
 ## 3. First run
 `marketlens` starts the server on `http://127.0.0.1:8080/` and opens your browser. The first visit shows
 **Create an account**: enter name, email, date of birth, a user ID and a password. After that, sign in with the user
-ID and password. More people can create their own accounts on the same installation.
+ID and password. You stay signed in, even after closing the browser, until you sign out or 15 days pass. More people can
+create their own accounts on the same installation.
 
 Useful flags (full list: `marketlens --help`):
 

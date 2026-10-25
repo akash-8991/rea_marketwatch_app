@@ -12,18 +12,20 @@ Every build first runs the tests: the 140 Python tests (`container.yml`) and the
 against the Python engine's output (`android.yml`). Pull requests run tests and build, but publish nothing.
 
 ## One-time setup
-1. **Stable Android signing key** (otherwise phones must uninstall to update, losing app data): follow "Signing and updates"
-   in [MOBILE.md](MOBILE.md) and store the secret `MARKETLENS_DEBUG_KEYSTORE`.
+1. **Stable Android signing key** (otherwise phones must uninstall to update, losing app data): create `debug.keystore`, store it
+   as the secret `MARKETLENS_DEBUG_KEYSTORE`, and back the file up privately. Step by step: "Signing and updates" in
+   [MOBILE.md](MOBILE.md). Never commit the file (`*.keystore` is git-ignored). Check it worked: the APK job log has no
+   "No MARKETLENS_DEBUG_KEYSTORE secret" warning.
 2. **Container package visibility**: after the first publish, open the repository's *Packages*, select `rea_marketwatch_app`,
    and set visibility to *Public* so `docker pull` works without logging in. Make sure the repository's *Settings > Actions >
    General > Workflow permissions* allows the workflow to write packages (the workflow requests `packages: write` itself).
 
 ## Cutting a release
 ```bash
-# 1. bump versions: pyproject.toml + src/marketlens/__init__.py (desktop), mobile/package.json (Android), update docs
+# 1. bump versions (mobile/package.json is the Android version): pyproject.toml + src/marketlens/__init__.py (desktop), mobile/package.json (Android), update docs
 # 2. make sure main is green (Actions tab), then:
 git tag v0.2.0        && git push origin v0.2.0          # container image :0.2.0 and :0.2
-git tag mobile-v0.3.1 && git push origin mobile-v0.3.1   # Android APK as a GitHub Release
+git tag mobile-v0.3.2 && git push origin mobile-v0.3.2   # Android APK as a GitHub Release
 ```
 The Android version code is the workflow run number, so each build can update the previous one if signed with the same key.
 

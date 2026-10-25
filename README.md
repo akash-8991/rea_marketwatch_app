@@ -30,7 +30,8 @@ Python standard library.
 | **Python 3.9+** | `pip install marketlens-0.2.0-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
 | **An iPhone** | Not available yet; needs a Mac with Xcode to build. See [docs/MOBILE.md](docs/MOBILE.md), section 7. | |
 
-The first screen asks you to create an account; after that you sign in with your user ID and password. Everything is
+The first screen asks you to create an account; after that you sign in with your user ID and password. You then stay signed in
+(even after closing the app) until you sign out, for at most 15 days. Everything is
 stored on your own device (phone storage, the container's `/data` volume, or your user data folder).
 
 Guides: **[docs/INSTALL.md](docs/INSTALL.md)** (install, containers, background running, upgrade, backup, troubleshooting),

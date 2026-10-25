@@ -28,3 +28,7 @@ mobile/www/
 mobile/node_modules/
 mobile/android/
 mobile/ios/
+
+# Android signing keys: never commit
+*.keystore
+*.jks
