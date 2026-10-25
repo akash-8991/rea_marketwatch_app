@@ -77,9 +77,10 @@ jobs:
           cp android/app/build/outputs/apk/debug/app-debug.apk "$OUT"
           sha256sum "$OUT" | tee "$OUT.sha256"
           ls -l "$OUT"
-          "$ANDROID_HOME"/build-tools/*/aapt2 dump badging "$OUT" | grep -E "^(package|sdkVersion|targetSdkVersion|uses-permission|application-label:)" || true
+          "$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2" dump badging "$OUT" | grep -E "^(package|sdkVersion|targetSdkVersion|uses-permission|application-label:)" || true
           echo "Signer certificate (compare with: keytool -list -keystore debug.keystore):"
-          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$OUT" | grep -E "SHA-256|Verified" || true
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+          "${BT}apksigner" verify --print-certs "$OUT" | grep -E "SHA-256|Verified" || true
           echo "apk=$OUT" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
         with:
