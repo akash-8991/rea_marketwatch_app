@@ -100,6 +100,27 @@ class StylesheetRules(unittest.TestCase):
         self.assertRegex(HTML, r'id="logout"[^>]*class="[^"]*\bhide\b')
         self.assertRegex(HTML, r'id="whoami"[^>]*class="[^"]*\bhide\b')
 
+    # ---- responsive: the layout must hold from a 280 px folded phone to a 4K display ----
+    def test_grid_and_flex_children_may_shrink_so_nothing_widens_the_page(self):
+        self.assertRegex(CSS, r"\.grid > \*[^{]*\{\s*min-width:\s*0")
+        self.assertRegex(CSS, r"\.card, \.content[^{]*\{[^}]*min-width:\s*0")
+        self.assertRegex(CSS, r"html, body \{\s*overflow-x:\s*clip")
+
+    def test_breakpoints_cover_folded_phone_phone_tablet_and_large_screens(self):
+        widths = {int(w) for w in re.findall(r"@media \(max-width:\s*(\d+)px\)", CSS)}
+        self.assertTrue({340, 380, 640, 860, 1100} <= widths, widths)
+        self.assertRegex(CSS, r"@media \(min-width:\s*1500px\)")
+        self.assertRegex(CSS, r"@media \(min-width:\s*2200px\)")
+        self.assertRegex(CSS, r"@media \(max-height:\s*520px\) and \(orientation:\s*landscape\)")
+
+    def test_touch_targets_and_viewport(self):
+        self.assertRegex(CSS, r"@media \(pointer: coarse\)[^{]*\{[^}]*\.th-btn")
+        self.assertRegex(HTML, r'<meta name="viewport" content="[^"]*width=device-width')
+        self.assertNotRegex(HTML, r"user-scalable=no|maximum-scale=1\b")   # pinch-zoom stays available
+
+    def test_index_tiles_scroll_sideways_instead_of_wrapping(self):
+        self.assertRegex(CSS, r"\.tick \{[^}]*flex:\s*none[^}]*white-space:\s*nowrap")
+
 
 if __name__ == "__main__":
     unittest.main()

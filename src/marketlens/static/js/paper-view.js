@@ -45,7 +45,7 @@ export function mount(root, ctx) {
     const tone = (n) => (n > 0 ? 'up' : n < 0 ? 'down' : '');
     const alloc = [['Cash', v.cashPct, 'var(--series-4)'], ...v.rows.map((r, i) => [r.sym, r.weightPct, ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-5)', 'var(--series-6)'][i % 5]])];
     body.innerHTML = `<div class="grid gap-3">
-      <div class="grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(10.5rem,1fr))">
+      <div class="grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,10.5rem),1fr))">
         ${stat('Total value', rupee(v.equity, 0), `Started with ${rupee(a.startCash, 0)}`)}${stat('Total profit / loss', `${signedRupee(v.totalPnl)}`, `<span class="${tone(v.returnPct)}">${signed(v.returnPct)}%</span>`, tone(v.totalPnl))}
         ${stat('Cash', rupee(a.cash, 0), `${v.cashPct.toFixed(0)}% of the account`)}${stat('Invested', rupee(v.invested, 0), `${v.rows.length} position${v.rows.length === 1 ? '' : 's'}`)}
         ${stat('Unrealised', signedRupee(v.unrealized), 'open positions', tone(v.unrealized))}${stat('Realised', signedRupee(v.realized), 'closed trades', tone(v.realized))}${stat('Fees paid', rupee(v.feesPaid, 0), `${FEE_PCT}% per trade`)}
@@ -150,7 +150,7 @@ export function mount(root, ctx) {
     const body = $('#paper-body', root); if (!body) return;
     const L = st.lab, S = STRATEGIES[L.key], params = { ...defaultParams(L.key), ...(L.params[L.key] || {}) };
     body.innerHTML = `<div class="grid gap-3"><section class="card"><h2 class="m-0">Run a strategy on real history</h2>
-      <form id="lab-form" class="mt-3 grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(11rem,1fr))" autocomplete="off" novalidate>
+      <form id="lab-form" class="mt-3 grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))" autocomplete="off" novalidate>
         <label class="grid gap-1 text-sm">Strategy<select id="lab-key" class="h-9 rounded-md border border-input bg-card px-2">${Object.entries(STRATEGIES).map(([k, s]) => `<option value="${k}" ${k === L.key ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
         <label class="grid gap-1 text-sm">Stock<input id="lab-sym" list="lab-sugg" value="${esc(L.sym)}" maxlength="24" class="h-9 rounded-md border border-input bg-card px-3"></label><datalist id="lab-sugg"></datalist>
         <label class="grid gap-1 text-sm">Period<select id="lab-period" class="h-9 rounded-md border border-input bg-card px-2">${PERIODS.map(([k, l]) => `<option value="${k}" ${k === L.period ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
@@ -159,7 +159,7 @@ export function mount(root, ctx) {
         <label class="grid gap-1 text-sm">Slippage (%)<input id="lab-slip" type="number" min="0" max="2" step="0.01" value="${L.slipPct}" class="h-9 rounded-md border border-input bg-card px-3"></label>
         ${S.params.map(([k, label, , lo, hi]) => `<label class="grid gap-1 text-sm">${esc(label)}<input data-param="${k}" type="number" min="${lo}" max="${hi}" step="${k === 'k' ? 0.5 : 1}" value="${params[k]}" class="h-9 rounded-md border border-input bg-card px-3"></label>`).join('')}
         <div class="flex items-end"><button type="submit" id="lab-run" class="${buttonClass({ size: 'lg', extra: 'w-full' })}">${icon('play', 16)}Run strategy</button></div></form></section>
-      <section class="card"><h2 class="m-0">${esc(S.name)}</h2><div class="mt-2 grid gap-2 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(15rem,1fr))">
+      <section class="card"><h2 class="m-0">${esc(S.name)}</h2><div class="mt-2 grid gap-2 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr))">
         <p class="m-0 sm:col-span-2" style="grid-column:1/-1"><b>The idea.</b> ${esc(S.idea)}</p><p class="m-0"><b>Buys when:</b> ${esc(S.buy)}</p><p class="m-0"><b>Sells when:</b> ${esc(S.sell)}</p>
         <p class="m-0"><b>Works when:</b> ${esc(S.works)}</p><p class="m-0"><b>Struggles when:</b> ${esc(S.fails)}</p><p class="m-0" style="grid-column:1/-1"><b>What to learn:</b> ${esc(S.lesson)}</p></div>
         <p class="mt-3 text-xs text-muted-foreground">Rules of the simulation: a signal is read at the close of a day and acts at the next day’s close; all-in or all-out in whole shares; long only; the same fee and slippage on every trade; compared with buying on day one and holding.</p></section>
@@ -195,7 +195,7 @@ export function mount(root, ctx) {
   }
 
   function curveChart(host, series) {
-    const W = Math.max(300, host.clientWidth || 720), H = 260, pl = 8, pr = 64, pt = 10, pb = 22, n = series[0].data.length;
+    const W = Math.max(240, host.clientWidth || 720), H = Math.round(Math.min(280, Math.max(180, innerHeight * 0.4))), pl = 8, pr = 64, pt = 10, pb = 22, n = series[0].data.length;
     const all = series.flatMap((s) => s.data.map((d) => d[1])), min = Math.min(...all), max = Math.max(...all), span = max - min || 1;
     const x = (i) => pl + (i / (n - 1 || 1)) * (W - pl - pr), y = (v) => pt + (1 - (v - min) / span) * (H - pt - pb);
     const path = (d) => d.map((p, i) => `${x(i).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
@@ -221,7 +221,7 @@ export function mount(root, ctx) {
     box.innerHTML = `<div class="grid gap-3"><section class="card" aria-live="polite"><div class="flex flex-wrap items-center justify-between gap-2"><h2 class="m-0">${esc(S.name)} on ${esc(sym)}</h2><p class="m-0 text-xs text-muted-foreground">${esc(fmtDate(st.result.first))} to ${esc(fmtDate(st.result.last))} · ${st.result.points} trading days</p></div>
       <p class="mt-2 text-sm">Starting with ${rupee(opts.capital, 0)}, the strategy ended at <b>${rupee(m.finalValue, 0)}</b> (<span class="${t(m.returnPct)}">${pct(m.returnPct)}</span>) and ${verdict} (<span class="${t(m.buyHoldPct)}">${pct(m.buyHoldPct)}</span>).</p>
       ${st.result.truncated ? `<p class="m-0 text-xs text-muted-foreground">NSE’s history starts on ${esc(fmtDate(st.result.earliest))}, so that is as far back as this test can go.</p>` : ''}
-      <div class="mt-3 grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr))">
+      <div class="mt-3 grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,9.5rem),1fr))">
         ${cell('Strategy return', pct(m.returnPct), m.cagrPct != null ? `${pct(m.cagrPct)} a year` : 'less than a year', t(m.returnPct))}${cell('Buy and hold', pct(m.buyHoldPct), `worst fall ${pct(m.buyHoldDrawdownPct)}`, t(m.buyHoldPct))}
         ${cell('Worst fall', pct(m.maxDrawdownPct), 'peak to trough', 'down')}${cell('Closed trades', `${m.roundTrips}`, `${m.winRatePct == null ? 'none closed yet' : `${m.winRatePct.toFixed(0)}% winners`}${r.today.open ? ' · 1 still open' : ''}`)}
         ${cell('Average trade', pct(m.avgTradePct), 'per round trip', t(m.avgTradePct))}${cell('Time invested', `${m.exposurePct.toFixed(0)}%`, 'of the days')}${cell('Costs paid', rupee(m.feesPaid, 0), `${opts.feePct}% fee + ${opts.slipPct}% slippage`)}</div>

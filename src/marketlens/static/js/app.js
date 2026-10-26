@@ -523,7 +523,7 @@ startVitals();
     if (open) { const sc = document.createElement('div'); sc.className = 'scrim'; sc.addEventListener('click', closeMenu); document.body.appendChild(sc); }
   });
   if (window.MLUser) {
-    $('#whoami').textContent = window.MLUser.name; $('#whoami').classList.remove('hide'); $('#logout').classList.remove('hide');
+    $('#whoami').textContent = window.MLUser.name; const nu = $('#nav-user'); if (nu) { nu.textContent = `Signed in as ${window.MLUser.name}`; nu.hidden = false; } $('#whoami').classList.remove('hide'); $('#logout').classList.remove('hide');
     $('#logout').addEventListener('click', async () => { $('#logout').disabled = true; try { await api('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'MarketLens' }, body: '{}' }); } finally {
       // A real navigation to the bare page (more reliable than reload() inside the Android WebView); if the page is somehow still
       // alive a moment later, show the sign-in form directly.

@@ -22,7 +22,7 @@ function getHistory(sym, range, signal) {
 export function mount(host, { sym, onRange = () => {} }) {
   let range = store.get('ml.range', '3M'), ctl = null, seq = 0, data = null, ro = null, active = -1;
   host.innerHTML = `<section class="card" aria-label="Price chart"><div class="flex flex-wrap items-center justify-between gap-2">${tabs(RANGES, range, { id: 'range-tabs', label: 'Chart range' })}<p id="chart-sum" class="m-0 text-sm text-muted-foreground"></p></div>
-    <div id="chart-body" class="mt-3" style="min-height:300px"></div><p id="chart-note" class="m-0 mt-2 text-xs text-muted-foreground"></p></section>`;
+    <div id="chart-body" class="mt-3" style="min-height:200px"></div><p id="chart-note" class="m-0 mt-2 text-xs text-muted-foreground"></p></section>`;
   const body = $('#chart-body', host), note = $('#chart-note', host), sum = $('#chart-sum', host);
 
   async function load(r = range) {
@@ -49,7 +49,7 @@ export function mount(host, { sym, onRange = () => {} }) {
       note.textContent = ''; sum.textContent = ''; return;
     }
     const pts = decimate(data.points), s = stats(data.points), up = s.last >= s.first, colour = up ? 'var(--up)' : 'var(--down)';
-    const W = Math.max(280, body.clientWidth || 720), H = 300, padL = 8, padR = 52, padT = 10, padB = 24;
+    const W = Math.max(240, body.clientWidth || 720), H = Math.round(Math.min(320, Math.max(200, innerHeight * 0.45))), padL = 8, padR = 52, padT = 10, padB = 24;
     const min = Math.min(...pts.map((p) => p[1])), max = Math.max(...pts.map((p) => p[1])), span = max - min || 1;
     const x = (i) => padL + (i / (pts.length - 1 || 1)) * (W - padL - padR), y = (v) => padT + (1 - (v - min) / span) * (H - padT - padB);
     const line = pts.map((p, i) => `${x(i).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');

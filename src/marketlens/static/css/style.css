@@ -295,3 +295,64 @@ svg#chart-svg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2
 .sym-cell { text-align: left; font-weight: 400; } .sym-cell .co { display: block; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); }
 .vwin { max-height: 70vh; overflow: auto; } .vwin thead th { position: sticky; top: 0; background: var(--surface-2); z-index: 2; }
 .dash-table tbody tr:not([aria-hidden]) { height: 52px; }
+
+/* ---------- 8. responsive foundation: every width from a folded phone (280 px) to a 4K display ---------- */
+/* a grid or flex child may shrink below its content, so one wide table or toolbar can never stretch the page */
+.grid > *, .grid2 > *, .grid3 > *, .stats > *, .heat > *, .pfform > *, .qhead > *, .shell > *, .bar > .search { min-width: 0; }
+.card, .content, main { min-width: 0; max-width: 100%; }
+input, select, textarea { max-width: 100%; }
+img, svg, canvas, video { max-width: 100%; }
+/* last-resort guard: a stray element can never widen the page (content stays reachable in its own scroll box); sticky positioning is unaffected by clip */
+html, body { overflow-x: clip; }
+.ticker { scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+.tick { flex: none; scroll-snap-align: start; white-space: nowrap; min-width: 8rem; }
+.top .bar { flex-wrap: nowrap; }
+.logo { flex: none; }
+.search { flex: 1 1 0; min-width: 2.5rem; }
+.search input { min-width: 0; }
+.nav-user { margin: auto 0 0; padding: var(--space-3); color: var(--text-muted); font-size: var(--fs-sm); border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+.nav-user[hidden] { display: none; }
+#logout .lucide { display: none; }
+dialog { max-width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); overflow: auto; }
+/* very wide screens: centre the content instead of leaving the right half empty, and give it a little more room */
+@media (min-width: 1500px) { :root { --content-max: 1400px; --content-wide: 1800px; } }
+@media (min-width: 1500px) { .content main.container, .content footer { margin-inline: auto; } .content main.container { width: 100%; } }
+@media (min-width: 2200px) { :root { --fs-base: 1.0625rem; --content-max: 1560px; --content-wide: 2000px; } .shell { grid-template-columns: 15rem minmax(0, 1fr); } }
+/* medium: tablets in portrait and small laptops */
+@media (max-width: 1100px) { .shell { grid-template-columns: 12rem minmax(0, 1fr); } .whoami { display: none; } }
+/* phones and narrow windows */
+@media (max-width: 640px) {
+  .bar { gap: var(--space-2); padding-inline: var(--space-3); }
+  .whoami { display: none; }
+  #logout .lbl { display: none; } #logout .lucide { display: inline-block; } #logout { padding-inline: var(--space-2); min-width: 2.75rem; }
+  .pill .pill-text { display: none; } .pill { padding: .25rem .45rem; }
+  .toasts { left: .75rem; right: .75rem; width: auto; }
+  .tick { min-width: 7.25rem; } .ticker { gap: var(--space-4); padding-inline: var(--space-3); }
+  .heat { grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); }
+  .stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr)); }
+  h1 { word-break: normal; overflow-wrap: anywhere; }
+  .qhead { gap: var(--space-3); } .qhead .qactions { width: 100%; }
+  .qprice .big { font-size: var(--fs-xl); }
+  .card { padding: var(--space-3); }
+  .subtabs a { padding-inline: var(--space-3); }
+  .tbl th, .tbl td { padding-inline: var(--space-2); }
+}
+/* folded and very small phones */
+@media (max-width: 380px) {
+  :root { --gutter: 10px; --fs-base: .90625rem; }
+  .logo { font-size: var(--fs-md); } .search input { padding-left: 2rem; }
+  .btn, .icon-btn { padding-inline: var(--space-2); }
+  .tick { min-width: 6.5rem; } .tval { font-size: var(--fs-md); }
+  nav.main { width: min(15rem, 88vw); }
+}
+/* landscape phones: little height, so give the content the room */
+@media (max-height: 520px) and (orientation: landscape) {
+  header.top .bar { padding-block: var(--space-1); }
+  main { min-height: 0; } nav.main { min-height: 0; }
+  dialog.pal { margin-top: 3vh; } .chart-tip { width: 8rem; }
+}
+/* touch targets stay at least 44 px, including table sort buttons and star toggles */
+@media (pointer: coarse) { .th-btn, .star, .tabs button, .subtabs a, nav.main a { min-height: 2.75rem; } .th-btn, .star { min-width: 2.75rem; } }
+
+/* narrower than a small phone (folded devices): the status pill gives way, the banner under the bar still says the same */
+@media (max-width: 340px) { .pill { display: none; } }

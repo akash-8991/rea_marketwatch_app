@@ -22,7 +22,7 @@
         <kbd class="kbd" aria-hidden="true">Ctrl K</kbd>
       </div>
       <span id="status-pill" class="pill" role="status" aria-live="polite"></span>
-      <span id="whoami" class="whoami hide"></span><button id="logout" class="btn small hide" type="button">Sign out</button>
+      <span id="whoami" class="whoami hide"></span><button id="logout" class="btn small hide" type="button" aria-label="Sign out"><span data-icon="log-out" data-size="16"></span><span class="lbl">Sign out</span></button>
       <button id="theme" class="icon-btn spacer" type="button" aria-label="Toggle dark mode"><span data-icon="moon"></span></button>
     </div>
   </header>
@@ -36,6 +36,7 @@
       <a href="#/paper" data-r="paper"><span data-icon="flask-conical"></span>Paper trading</a>
       <a href="#/news" data-r="news"><span data-icon="newspaper"></span>News</a>
       <a href="#/updates" data-r="updates"><span data-icon="activity"></span>Updates</a>
+      <p class="nav-user" id="nav-user" hidden></p>
     </nav>
     <div class="content">
       <div id="banner" class="banner" role="status" aria-live="polite">Loading market data…</div>

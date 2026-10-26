@@ -15,6 +15,28 @@ One interface, three channels (desktop server, container, Android app): `src/mar
 Top bar (menu on phones, logo, search box that opens the palette, market/data status pill, user, theme) above a left navigation rail with icons. On phones the rail
 slides in over a dimmed page, starts below the status bar, and closes on selection. The first screen reserves its space (skeletons, fixed heights) so nothing jumps.
 
+### Screen sizes
+The layout is fluid and works from a 280 px folded phone to a 4K display, in portrait and landscape, light and dark.
+
+| Width | What changes |
+|---|---|
+| ≤ 340 px | status pill hides (the banner under the bar says the same); search trigger shrinks to an icon |
+| ≤ 380 px | smaller gutters and base font, narrower menu |
+| ≤ 640 px | sign-out becomes an icon, index tiles scroll sideways instead of wrapping, tighter cards and table cells |
+| ≤ 860 px | navigation rail becomes a slide-in menu (with the signed-in user at its foot) |
+| ≤ 1100 px | narrower rail, user name leaves the top bar |
+| ≥ 1500 px / ≥ 2200 px | content centred with a wider maximum; larger base font and rail on very large displays |
+| landscape, ≤ 520 px high | slimmer top bar, shorter charts |
+
+Rules that make it hold: grid and flex children may shrink (`min-width: 0`), so a wide table scrolls inside its own box and can never stretch the page;
+grid minimums use `min(100%, …)`; charts size to the window height; dialogs and toasts never exceed the viewport; touch screens get 44 px targets
+(including sort buttons and stars); pinch-zoom is never disabled.
+
+**Checking it:** `tests/test_design.py` guards these rules. For a visual sweep, serve `mobile/www`, load `mobile/dev/browser-mock.js` then
+`mobile/dev/layout-check.js`, set the window size and run `await __layoutCheck(['#/', '#/markets', '#/screener', '#/options', '#/watchlist', '#/paper', '#/news', '#/updates', '#/quote/INFY'])`.
+It reports sideways page growth, elements poking out of the window, wrapping controls, clipped text, overlapping top-bar items and small tap targets.
+Last run at 280, 320, 390, 667×375, 768, 1024 and 1920 px: no findings (the only reports left are headlines that wrap onto several lines, which is intended).
+
 ## Keyboard
 | Keys | Does |
 |---|---|
