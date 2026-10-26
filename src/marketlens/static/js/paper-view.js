@@ -4,7 +4,7 @@
 import { $, $$, esc, money, signed, cls, arrow, compact, api, icon, store, fmtDate, debounce } from './lib.js';
 import { tabs, bindTabs, buttonClass, statusBadge, alert, emptyCard, skeletonRows, toast, confirmDialog, badge, ago } from './ui.js';
 import { newAccount, normalize, placeOrder, valuation, sharesFor, OrderError, START_CASH, FEE_PCT } from './paper.js';
-import { STRATEGIES, backtest, compareAll, cleanParams, defaultParams } from './strategies.js';
+import { STRATEGIES, backtest, compareAll, cleanParams, defaultParams, strategyGroups } from './strategies.js';
 
 const KEY = 'ml.paper', SERIES = ['var(--series-1)', 'var(--series-3)'];
 const rupee = (n, d = 2) => `₹${money(n, d)}`;
@@ -30,11 +30,11 @@ export function mount(root, ctx) {
   /* ---------- shell ---------- */
   function shell() {
     root.innerHTML = `<div class="grid gap-3"><div class="flex flex-wrap items-end justify-between gap-3"><div><h1 class="m-0">Paper trading</h1>
-      <p class="m-0 mt-1 text-sm text-muted-foreground">Practise with ${rupee(START_CASH, 0)} of pretend money at real NSE prices. Learn how strategies behave before any real money is involved.</p></div>
-      ${tabs([['portfolio', 'Portfolio'], ['trade', 'Trade'], ['lab', 'Strategy lab']], st.tab, { id: 'paper-tabs', label: 'Paper trading sections' })}</div><div id="paper-body"></div></div>`;
+      <p class="m-0 mt-1 text-sm text-muted-foreground">Practise with ${rupee(START_CASH, 0)} of pretend money at real NSE prices: place paper orders, test stock and technical-analysis strategies on real history, and build option strategies from the real option chain. Learn how they behave before any real money is involved.</p></div>
+      ${tabs([['portfolio', 'Portfolio'], ['trade', 'Trade'], ['lab', 'Stock strategies'], ['options', 'Option strategies']], st.tab, { id: 'paper-tabs', label: 'Paper trading sections' })}</div><div id="paper-body"></div></div>`;
     bindTabs($('#paper-tabs', root), (t) => { st.tab = t; store.set('ml.paper.tab', t); paintTab(); });
   }
-  function paintTab() { ({ portfolio: paintPortfolio, trade: paintTrade, lab: paintLab })[st.tab](); }
+  function paintTab() { ({ portfolio: paintPortfolio, trade: paintTrade, lab: paintLab, options: paintOptionsTab })[st.tab] ? ({ portfolio: paintPortfolio, trade: paintTrade, lab: paintLab, options: paintOptionsTab })[st.tab]() : paintPortfolio(); }
   const go = (tab) => { const btn = $(`#paper-tabs [data-tab="${tab}"]`, root); if (btn) btn.click(); else { st.tab = tab; paintTab(); } };
 
   /* ---------- portfolio ---------- */
@@ -59,7 +59,7 @@ export function mount(root, ctx) {
           <td class="num">${r.priced ? money(r.last) : '<span class="muted" title="No current price; shown at cost">—</span>'}</td><td class="num">${money(r.value, 0)}</td>
           <td class="num ${tone(r.pnl)}">${r.priced ? signedRupee(r.pnl) : '—'}</td><td class="num ${tone(r.pnl)}">${r.priced ? `${arrow(r.pnl)} ${Math.abs(r.pnlPct).toFixed(2)}%` : '—'}</td><td class="num">${r.weightPct.toFixed(1)}%</td>
           <td class="num"><button type="button" data-sell="${esc(r.sym)}" class="${buttonClass({ variant: 'outline', size: 'sm' })}">Sell</button></td></tr>`).join('')}</tbody></table></div>`
-        : emptyCard({ iconName: 'briefcase', title: 'No open positions', text: 'Place a paper order, or test a strategy in the Strategy lab first.', action: `<div class="flex flex-wrap justify-center gap-2"><button type="button" data-go="trade" class="${buttonClass()}">Place an order</button><button type="button" data-go="lab" class="${buttonClass({ variant: 'outline' })}">Open the strategy lab</button></div>` })}
+        : emptyCard({ iconName: 'briefcase', title: 'No open positions', text: 'Place a paper order, or test a strategy in Stock strategies or Option strategies first.', action: `<div class="flex flex-wrap justify-center gap-2"><button type="button" data-go="trade" class="${buttonClass()}">Place an order</button><button type="button" data-go="lab" class="${buttonClass({ variant: 'outline' })}">Open the strategy lab</button></div>` })}
       </section>
       <section class="card"><div class="flex flex-wrap items-center justify-between gap-2"><h2 class="m-0">Trade history</h2><div class="flex gap-2">
         <button type="button" id="pp-csv" class="${buttonClass({ variant: 'outline', size: 'sm' })}" ${a.trades.length ? '' : 'disabled'}>${icon('download', 14)}Download CSV</button>
@@ -145,13 +145,21 @@ export function mount(root, ctx) {
     if (pf.qty) summary();
   }
 
+  /* ---------- option strategies (own module, loaded on first use) ---------- */
+  function paintOptionsTab() {
+    const body = $('#paper-body', root); if (!body) return;
+    body.innerHTML = `<section class="card">${skeletonRows(4)}</section>`;
+    import('./options-view.js').then((m) => { if (st.alive && st.tab === 'options' && document.body.contains(root)) m.paintOptions($('#paper-body', root), { isAlive: () => st.alive && st.tab === 'options' }); })
+      .catch((e) => { body.innerHTML = alert({ variant: 'destructive', title: 'Could not load the option strategies', text: e.message }); });
+  }
+
   /* ---------- strategy lab ---------- */
   function paintLab() {
     const body = $('#paper-body', root); if (!body) return;
     const L = st.lab, S = STRATEGIES[L.key], params = { ...defaultParams(L.key), ...(L.params[L.key] || {}) };
-    body.innerHTML = `<div class="grid gap-3"><section class="card"><h2 class="m-0">Run a strategy on real history</h2>
+    body.innerHTML = `<div class="grid gap-3"><section class="card"><h2 class="m-0">Run a stock strategy on real history</h2>
       <form id="lab-form" class="mt-3 grid gap-3" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr))" autocomplete="off" novalidate>
-        <label class="grid gap-1 text-sm">Strategy<select id="lab-key" class="h-9 rounded-md border border-input bg-card px-2">${Object.entries(STRATEGIES).map(([k, s]) => `<option value="${k}" ${k === L.key ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+        <label class="grid gap-1 text-sm">Strategy<select id="lab-key" class="h-9 rounded-md border border-input bg-card px-2">${strategyGroups().map(([g, items]) => `<optgroup label="${esc(g)}">${items.map(([k, n]) => `<option value="${k}" ${k === L.key ? 'selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>`).join('')}</select></label>
         <label class="grid gap-1 text-sm">Stock<input id="lab-sym" list="lab-sugg" value="${esc(L.sym)}" maxlength="24" class="h-9 rounded-md border border-input bg-card px-3"></label><datalist id="lab-sugg"></datalist>
         <label class="grid gap-1 text-sm">Period<select id="lab-period" class="h-9 rounded-md border border-input bg-card px-2">${PERIODS.map(([k, l]) => `<option value="${k}" ${k === L.period ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
         <label class="grid gap-1 text-sm">Starting money (₹)<input id="lab-cap" type="number" min="10000" step="10000" value="${L.capital}" class="h-9 rounded-md border border-input bg-card px-3"></label>
@@ -159,10 +167,10 @@ export function mount(root, ctx) {
         <label class="grid gap-1 text-sm">Slippage (%)<input id="lab-slip" type="number" min="0" max="2" step="0.01" value="${L.slipPct}" class="h-9 rounded-md border border-input bg-card px-3"></label>
         ${S.params.map(([k, label, , lo, hi]) => `<label class="grid gap-1 text-sm">${esc(label)}<input data-param="${k}" type="number" min="${lo}" max="${hi}" step="${k === 'k' ? 0.5 : 1}" value="${params[k]}" class="h-9 rounded-md border border-input bg-card px-3"></label>`).join('')}
         <div class="flex items-end"><button type="submit" id="lab-run" class="${buttonClass({ size: 'lg', extra: 'w-full' })}">${icon('play', 16)}Run strategy</button></div></form></section>
-      <section class="card"><h2 class="m-0">${esc(S.name)}</h2><div class="mt-2 grid gap-2 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr))">
+      <section class="card"><div class="flex flex-wrap items-center justify-between gap-2"><h2 class="m-0">${esc(S.name)}</h2><p class="m-0 flex gap-2">${badge(S.group || 'Strategy', { variant: 'outline' })}${S.shorts ? badge('Long and short', { variant: 'warning' }) : ''}</p></div><div class="mt-2 grid gap-2 text-sm" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr))">
         <p class="m-0 sm:col-span-2" style="grid-column:1/-1"><b>The idea.</b> ${esc(S.idea)}</p><p class="m-0"><b>Buys when:</b> ${esc(S.buy)}</p><p class="m-0"><b>Sells when:</b> ${esc(S.sell)}</p>
         <p class="m-0"><b>Works when:</b> ${esc(S.works)}</p><p class="m-0"><b>Struggles when:</b> ${esc(S.fails)}</p><p class="m-0" style="grid-column:1/-1"><b>What to learn:</b> ${esc(S.lesson)}</p></div>
-        <p class="mt-3 text-xs text-muted-foreground">Rules of the simulation: a signal is read at the close of a day and acts at the next day’s close; all-in or all-out in whole shares; long only; the same fee and slippage on every trade; compared with buying on day one and holding.</p></section>
+        <p class="mt-3 text-xs text-muted-foreground">Rules of the simulation: a signal is read at the close of a day and acts at the next day’s close; all-in or all-out in whole shares; long only, except strategies marked long and short, which also sell short (a paper-account order cannot); SIP invests equal instalments; the same fee and slippage on every trade; compared with buying on day one and holding.</p></section>
       <div id="lab-result"></div></div>`;
     const read = () => {
       L.key = $('#lab-key', body).value; L.sym = $('#lab-sym', body).value.trim().toUpperCase(); L.period = $('#lab-period', body).value;
@@ -226,13 +234,13 @@ export function mount(root, ctx) {
         ${cell('Worst fall', pct(m.maxDrawdownPct), 'peak to trough', 'down')}${cell('Closed trades', `${m.roundTrips}`, `${m.winRatePct == null ? 'none closed yet' : `${m.winRatePct.toFixed(0)}% winners`}${r.today.open ? ' · 1 still open' : ''}`)}
         ${cell('Average trade', pct(m.avgTradePct), 'per round trip', t(m.avgTradePct))}${cell('Time invested', `${m.exposurePct.toFixed(0)}%`, 'of the days')}${cell('Costs paid', rupee(m.feesPaid, 0), `${opts.feePct}% fee + ${opts.slipPct}% slippage`)}</div>
       <div id="curve-host" class="mt-3"></div></section>
-      <section class="card"><h2 class="m-0">Today’s position</h2><p class="mt-2 text-sm">${r.today.position === 'long' ? `The strategy is <b class="up">invested</b>${r.today.since ? ` since ${esc(fmtDate(r.today.since))}` : ''}.` : `The strategy is <b>in cash</b>${r.today.since ? ` since ${esc(fmtDate(r.today.since))}` : ''}.`}</p>
+      <section class="card"><h2 class="m-0">Today’s position</h2><p class="mt-2 text-sm">${r.today.position === 'long' ? `The strategy is <b class="up">invested</b>${r.today.since ? ` since ${esc(fmtDate(r.today.since))}` : ''}${r.today.invested != null ? `; ${rupee(r.today.invested, 0)} invested so far in instalments` : ''}.` : r.today.position === 'short' ? `The strategy is <b class="down">short</b>${r.today.since ? ` since ${esc(fmtDate(r.today.since))}` : ''}. Your paper account cannot short, so there is nothing to place; to stay with the idea, use the Option strategies tab (for example a put spread).` : `The strategy is <b>in cash</b>${r.today.since ? ` since ${esc(fmtDate(r.today.since))}` : ''}.`}</p>
         <div class="flex flex-wrap gap-2"><button type="button" id="lab-buy" class="${buttonClass({ size: 'sm' })}" ${r.today.position === 'long' ? '' : 'disabled'}>Paper-buy ${esc(sym)} (10% of the account)</button>
           <button type="button" id="lab-sell" class="${buttonClass({ variant: 'outline', size: 'sm' })}" ${held ? '' : 'disabled'}>Paper-sell my ${held ? held + ' ' : ''}${esc(sym)}</button></div></section>
-      <section class="card"><h2 class="m-0">Every trade</h2>${r.trades.length ? `<div class="scroll mt-2"><table class="tbl"><thead><tr><th>Date</th><th>Side</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Fee</th><th class="num">Result</th></tr></thead><tbody>${r.trades.map((tr) => `<tr><td>${esc(fmtDate(tr.date))}</td><td>${badge(tr.side, { variant: tr.side === 'BUY' ? 'success' : 'danger' })}</td><td class="num">${money(tr.price)}</td><td class="num">${tr.qty}</td><td class="num">${money(tr.fee)}</td><td class="num ${tr.pnl == null ? '' : t(tr.pnl)}">${tr.pnl == null ? '—' : `${signedRupee(tr.pnl)} (${pct(tr.pct)})`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted mt-2">The strategy never traded on this data.</p>'}</section>
+      <section class="card"><h2 class="m-0">Every trade</h2>${r.trades.length ? `<div class="scroll mt-2"><table class="tbl"><thead><tr><th>Date</th><th>Side</th><th class="num">Price</th><th class="num">Qty</th><th class="num">Fee</th><th class="num">Result</th></tr></thead><tbody>${r.trades.map((tr) => `<tr><td>${esc(fmtDate(tr.date))}</td><td>${badge(tr.side, { variant: tr.side === 'BUY' || tr.side === 'COVER' ? 'success' : 'danger' })}</td><td class="num">${money(tr.price)}</td><td class="num">${tr.qty}</td><td class="num">${money(tr.fee)}</td><td class="num ${tr.pnl == null ? '' : t(tr.pnl)}">${tr.pnl == null ? '—' : `${signedRupee(tr.pnl)} (${pct(tr.pct)})`}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted mt-2">The strategy never traded on this data.</p>'}</section>
       <section class="card"><h2 class="m-0">The same stock, every strategy</h2><p class="m-0 mt-1 text-xs text-muted-foreground">Each with its default settings and the same costs, over the same days. Select a row to open that strategy.</p>
         <div class="scroll mt-2"><table class="tbl"><thead><tr><th>Strategy</th><th class="num">Return</th><th class="num">Vs buy &amp; hold</th><th class="num">Worst fall</th><th class="num">Trades</th><th class="num">Winners</th><th class="num">Invested</th><th>Today</th></tr></thead><tbody>
-        ${all.map((a) => `<tr data-open="${a.key}" tabindex="0" style="cursor:pointer" class="${a.key === r.key ? 'me' : ''}"><td><b>${esc(a.name)}</b></td>${a.error ? `<td colspan="7" class="muted">${esc(a.error)}</td>` : `<td class="num ${t(a.returnPct)}">${pct(a.returnPct)}</td><td class="num ${t(a.excessPct)}">${pct(a.excessPct)}</td><td class="num down">${pct(a.maxDrawdownPct)}</td><td class="num">${a.roundTrips}</td><td class="num">${a.winRatePct == null ? '—' : a.winRatePct.toFixed(0) + '%'}</td><td class="num">${a.exposurePct.toFixed(0)}%</td><td>${a.today === 'long' ? 'Invested' : 'Cash'}</td>`}</tr>`).join('')}</tbody></table></div></section></div>`;
+        ${all.map((a) => `<tr data-open="${a.key}" tabindex="0" style="cursor:pointer" class="${a.key === r.key ? 'me' : ''}"><td><b>${esc(a.name)}</b></td>${a.error ? `<td colspan="7" class="muted">${esc(a.error)}</td>` : `<td class="num ${t(a.returnPct)}">${pct(a.returnPct)}</td><td class="num ${t(a.excessPct)}">${pct(a.excessPct)}</td><td class="num down">${pct(a.maxDrawdownPct)}</td><td class="num">${a.roundTrips}</td><td class="num">${a.winRatePct == null ? '—' : a.winRatePct.toFixed(0) + '%'}</td><td class="num">${a.exposurePct.toFixed(0)}%</td><td>${a.today === 'long' ? 'Invested' : a.today === 'short' ? 'Short' : 'Cash'}</td>`}</tr>`).join('')}</tbody></table></div></section></div>`;
     curveChart($('#curve-host', box), [{ name: `${S.name}`, data: r.equity }, { name: 'Buy and hold', data: r.buyHold }]);
     $('#lab-buy', box)?.addEventListener('click', async () => { await loadPrices([sym]); const px = st.prices[sym]; const v = valuation(st.acc, st.prices); st.prefill = { sym, side: 'BUY', strategy: r.key, qty: px ? sharesFor(v.equity * 0.1, px) : '' }; go('trade'); });
     $('#lab-sell', box)?.addEventListener('click', () => { st.prefill = { sym, side: 'SELL', strategy: r.key, qty: held }; go('trade'); });

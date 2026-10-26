@@ -96,7 +96,7 @@ flowchart LR
     A[index.html + style.css + tailwind.css] --> B[data.js] --> C[app.js, lib.js, ui.js, icons.js]
   end
   subgraph Lazy["loaded on first use"]
-    P[palette.js] ; D[dashboard.js] ; H[chart.js] ; Pp[paper-view.js] --> S[strategies.js, indicators.js, paper.js] ; Sc[screener.js]
+    P[palette.js] ; D[dashboard.js] ; H[chart.js] ; Pp[paper-view.js] --> S[strategies.js, indicators.js, paper.js] ; Pp -. "Option strategies tab" .-> Ov[options-view.js] --> Ol[options-lab.js] ; Sc[screener.js]
   end
   C -. "Ctrl K" .-> P
   C -. "#/watchlist" .-> D

@@ -19,7 +19,7 @@ startVitals();
     else msg = D.market ? `Market open · prices update about every minute · last refresh ${at}.` : `Live · NSE session ${asOf} · fetched ${at}.`;
     if (conn.updating && state !== 'off') msg += ' Updating…';
     const pill = $('#status-pill');
-    if (pill) { const L = { live: ['Live', 'success', 'circle-dot'], closed: ['Market closed', 'flat', 'moon'], stale: ['Stale', 'warning', 'triangle-alert'], delayed: ['Delayed', 'warning', 'clock'], off: ['Disconnected', 'danger', 'wifi-off'] }[state];
+    if (pill) { const L = { live: ['Live', 'success', 'circle-dot'], closed: ['Market closed', 'flat', 'circle-dot'], stale: ['Stale', 'warning', 'triangle-alert'], delayed: ['Delayed', 'warning', 'clock'], off: ['Disconnected', 'danger', 'wifi-off'] }[state];
       pill.className = `pill pill-${L[1]}`; pill.innerHTML = `${icon(L[2], 12)}<span class="pill-text">${L[0]}</span>`; pill.title = msg; }
     el.className = `banner ${state}`;
     el.innerHTML = `<span class="dot ${state}" aria-hidden="true"></span><span><span class="state-name">${{ live: 'Live', closed: 'Market closed', stale: 'Stale', delayed: 'Delayed', off: 'Disconnected' }[state]}</span> ${esc(msg)}</span>`;

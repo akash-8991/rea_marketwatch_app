@@ -44,7 +44,7 @@ export const STATUS = {
   live: { variant: 'success', iconName: 'circle-dot', label: 'Live', hint: 'Market is open and this price is fresh (under 5 minutes old).' },
   delayed: { variant: 'warning', iconName: 'clock', label: 'Delayed', hint: 'Market is open but the latest price is more than 5 minutes old.' },
   cached: { variant: 'flat', iconName: 'database', label: 'Cached', hint: 'Shown from the app’s cache; a newer value is being fetched.' },
-  closed: { variant: 'flat', iconName: 'moon', label: 'Closed', hint: 'Market is closed: this is the last update of the day.' },
+  closed: { variant: 'flat', iconName: 'circle-dot', label: 'Closed', hint: 'Market is closed: this is the last update of the day.' },
   stale: { variant: 'warning', iconName: 'triangle-alert', label: 'Stale', hint: 'NSE could not be reached, so a saved copy is shown.' },
   unavailable: { variant: 'danger', iconName: 'circle-x', label: 'Unavailable', hint: 'No data for this symbol right now.' },
 };

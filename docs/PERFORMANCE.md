@@ -107,7 +107,7 @@ the project accepts a build step in every channel.
 
 ## 18. Code changes
 `mobile/engine/nse.js`, `market.js`, `engine.js`, `metrics.js`, `storage.js` (transport, quotes, history, metrics) and the Python twins `src/marketlens/nse.py`, `market.py`, `marketclock.py`, `server.py`, `store.py`;
-interface `static/js/ui.js palette.js dashboard.js chart.js paper-view.js paper.js strategies.js indicators.js pure.js icons.js`, `css/style.css`, `css/tailwind.css`; tooling `ui/`, `tools/bench-engine.mjs`, `bench-compare.mjs`, `payload.mjs`.
+interface `static/js/ui.js palette.js dashboard.js chart.js paper-view.js options-view.js options-lab.js paper.js strategies.js indicators.js pure.js icons.js`, `css/style.css`, `css/tailwind.css`; tooling `ui/`, `tools/bench-engine.mjs`, `bench-compare.mjs`, `payload.mjs`.
 Migration: none needed for users (data formats unchanged). Rollback: previous tags (`v0.4.0`, `mobile-v0.7.0`); every fix above is also individually revertible as listed.
 
 ## 19. Test plan (what runs in CI)

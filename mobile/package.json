@@ -1,6 +1,6 @@
 {
   "name": "marketlens-mobile",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "description": "MarketLens on-device app (Capacitor wrapper around the web UI and the JavaScript engine)",
   "type": "module",

@@ -73,24 +73,55 @@ only), 1W, 1M, 3M, 6M, 1Y, 5Y, 10Y. NSE's history starts on 1 January 2024, so 5
 a request that is no longer wanted (you switched range) is cancelled.
 
 ## Paper trading
-Three tabs.
+Four tabs.
 * **Portfolio**: value, profit and loss, cash, invested, realised and unrealised result, fees paid; allocation bar; positions (average cost includes the buying fee); trade
   history with CSV download (spreadsheet formulas neutralised); reset with confirmation.
 * **Trade**: order ticket with a live price card, quantity shortcuts (10, 25, 50 percent, max), an itemised cost, and reasons when an order cannot be placed. The fill price
   is fetched at the moment you press the button. Orders are blocked when there is no current price. Rules: whole shares, long only (no short selling), no borrowing, a 0.10% fee per trade.
-* **Strategy lab**: choose a strategy, a stock, a period and costs, and run it over the stock's real daily history. Output: final value against buy and hold, worst fall, closed
-  trades and win rate, time invested, costs, an account-value curve for both, every trade, today's position with one-click paper trades, and a table of all seven strategies
-  on the same data. Each strategy has a plain-language page: the idea, when it buys and sells, when it works, when it struggles, what to learn.
+* **Stock strategies**: 37 strategies, in nine groups, run over a stock's real daily history. Choose a strategy, a stock, a period, costs and the strategy's own settings. Output:
+  final value against buy and hold, worst fall, closed trades and win rate, time invested, costs, an account-value curve for both, every trade, today's position with one-click
+  paper trades, and a table of every strategy on the same data. Each has a plain-language page: the idea, when it buys and sells, when it works, when it struggles, what to learn.
+  A signal is read at one close and acts at the next; the strategies use closing prices only (highs and lows are not in the saved history), so oscillators use the closing range.
+* **Option strategies**: 41 strategies built from the real option chain (see below).
 
-| Strategy | Buys when | Sells when |
-|---|---|---|
-| Buy and hold | day one | never |
-| Moving-average crossover | fast average closes above slow average | it closes below |
-| RSI mean reversion | RSI below 30 | RSI above 55 |
-| MACD crossover | MACD line above its signal line | below |
-| Breakout (Donchian) | close above the previous 20-day high | close below the previous 10-day low |
-| Bollinger reversion | close below the lower band | close back at the middle average |
-| Momentum | price above its level 60 days ago | not above |
+### Stock and technical-analysis strategies
+| Group | Strategies |
+|---|---|
+| Benchmark | Buy and hold |
+| Trend following | Moving-average crossover, exponential-average crossover, triple moving-average alignment, golden / death cross (50 and 200 day), price above its average, MACD signal crossover, MACD above zero, linear-regression trend, TRIX |
+| Momentum | Momentum (look-back), RSI above 50, RSI momentum band, stochastic oscillator, CCI, time-series momentum (skipping recent days), near the 52-week high |
+| Mean reversion | RSI reversion, RSI(2) pullback in an uptrend, Bollinger reversion, Z-score, buy a dip below the average, consecutive down days |
+| Breakout and volatility | Donchian channel breakout, Turtle breakout (55 / 20), Bollinger breakout, volatility squeeze breakout |
+| Risk rules | Buy and hold with a trailing stop, trend entry with stop-loss and profit target |
+| Investing | Monthly SIP (equal instalments, rupee-cost averaging) |
+| Calendar | Turn of the month, Halloween (November to April) |
+| Long and short | Moving-average crossover, MACD crossover, momentum, channel breakout, Bollinger reversion and RSI reversion, each also selling short |
+
+Short strategies sell borrowed shares and buy them back (a short can lose without limit). The paper *account* still cannot short; shorting is simulated only inside the strategy lab.
+Every setting is clamped to a safe range, so a typo cannot crash or distort a run.
+
+### Option strategies
+Pick an underlying (NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY or any stock that has option data), an expiry, a strategy, a strike gap (how far apart the legs sit), lots and lot
+size. The legs are placed on real strikes of the chain from `/api/options` and priced from each contract's last traded price in NSE's latest end-of-day file (a missing price is
+estimated with Black-Scholes and flagged). Output: legs table, net debit or credit, maximum profit and loss (or "unlimited"), break-evens, reward to risk, a model estimate of
+the chance of profit, net delta, daily time decay and vega, a profit-and-loss chart (at expiry, and "if closed today"), a what-if price box, and a table of every strategy
+on the same chain. **Save to my paper option book** keeps a position (separate from the share portfolio; premiums are pretend); it is marked to the latest chain, can be closed
+at current premiums, or settled at an entered price after expiry.
+
+| Group | Strategies |
+|---|---|
+| Single position | Long underlying, short underlying (benchmarks), long call, long put, short call, cash-secured put |
+| Vertical spreads | Bull call, bear put, bull put (credit), bear call (credit), bullish and bearish risk reversal |
+| Synthetic | Synthetic long, synthetic short |
+| Income and hedging | Covered call, protective put, collar, covered put, covered strangle |
+| Volatility | Long straddle, long strangle, strap, strip, long guts, call and put ratio backspreads, reverse iron condor, reverse iron butterfly |
+| Range and income | Short straddle, short strangle, iron condor, iron butterfly, call / put butterfly, call condor, broken-wing butterfly, call and put ratio spreads, jade lizard |
+| Time spreads | Long calendar spread, diagonal spread (need the next expiry's chain) |
+
+What is exact and what is modelled: the profit and loss at expiry is arithmetic on the chain premiums. "If closed today", the Greeks and the chance of profit use Black-Scholes
+(7% interest, no dividends, each contract's implied volatility) and a lognormal price model: shapes to learn from, not forecasts. Brokerage, taxes, margin and early assignment are
+not modelled, and lot sizes are editable defaults (NSE revises them). The lab never places an order anywhere. Unlimited-risk strategies carry a warning.
+
 
 How the simulation stays honest: a signal is read from data up to and including a day and acts at the **next day's** close (no peeking, tested); all in or all out in whole
 shares; the same fee (default 0.10%) and slippage (0.05%) on every trade; results compared with buying on day one and holding. Past results of a rule on one stock's
@@ -98,6 +129,6 @@ history are a way to understand the rule, not a forecast, and only 2.8 years of 
 The account is stored in this browser or app only (per signed-in user) under `ml.paper`; clearing the app's storage removes it.
 
 ## Files
-`ui.js` components and toasts · `palette.js` command palette · `dashboard.js` watchlist · `chart.js` price chart · `paper-view.js` paper trading page ·
+`ui.js` components and toasts · `palette.js` command palette · `dashboard.js` watchlist · `chart.js` price chart · `paper-view.js` paper-trading page · `options-view.js` option strategies tab · `options-lab.js` option maths and catalogue paper trading page ·
 `paper.js` account rules · `strategies.js`, `indicators.js` simulator · `pure.js` testable logic (sorting, filtering, windowing, decimation, highlighting) ·
 `lib.js` helpers and API client (timeouts, retries with backoff and jitter, cancellation) · `icons.js` generated icons.
