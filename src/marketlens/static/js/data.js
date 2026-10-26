@@ -1,10 +1,11 @@
 /* MarketLens data layer (ES module): real NSE data via the local server (server.py -> NSE MCP).
  * Loads /api/bootstrap, builds window.MLData, then loads app.js. Sector labels come from a static map in
  * market.py (NSE does not supply them). */
-import { api, errorState, skeleton, store } from './lib.js';
+import { api, errorState, hydrateIcons, skeleton, store } from './lib.js';
 
 const root = document.getElementById('app');
 root.innerHTML = skeleton(8);
+hydrateIcons();
 
 const D = (window.MLData = {
   stocks: [], bySym: {}, indices: [], valuation: [], sectorIdx: [], sectors: [],

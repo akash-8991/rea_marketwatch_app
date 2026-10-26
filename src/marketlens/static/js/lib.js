@@ -49,12 +49,13 @@ export class ApiError extends Error {
 }
 
 /** api('/api/x', {method, headers, body, timeoutMs = 10000, retries}) -> parsed JSON. POST is never retried (not idempotent). */
-export async function api(path, { method = 'GET', headers, body, timeoutMs = 10000, retries, quiet = false } = {}) {
+export async function api(path, { method = 'GET', headers, body, timeoutMs = 10000, retries, quiet = false, signal } = {}) {
   const maxRetries = method === 'GET' ? (retries ?? 2) : 0;
   if (!quiet) setConn({ updating: conn.updating + 1 });
   try {
     for (let attempt = 0; ; attempt++) {
       const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), timeoutMs);
+      if (signal) { if (signal.aborted) { clearTimeout(timer); throw new DOMException('aborted', 'AbortError'); } signal.addEventListener('abort', () => ctl.abort(), { once: true }); }
       try {
         const r = await fetch(path, { method, headers, body, signal: ctl.signal });
         const data = await r.json().catch(() => ({}));
@@ -72,6 +73,7 @@ export async function api(path, { method = 'GET', headers, body, timeoutMs = 100
         throw new ApiError(data.error || `HTTP ${r.status}`, r.status, data);
       } catch (e) {
         if (e instanceof ApiError) throw e;
+        if (signal && signal.aborted) throw new DOMException('aborted', 'AbortError');   // the caller cancelled (an obsolete search): not an error, no retry, no banner
         const reason = e.name === 'AbortError' ? `no answer within ${timeoutMs / 1000} s` : 'cannot reach the local MarketLens server';
         if (attempt < maxRetries) { await sleep(400 * 2 ** attempt + Math.random() * 250); continue; }
         setConn({ state: 'offline', lastError: reason });
@@ -84,21 +86,12 @@ export async function api(path, { method = 'GET', headers, body, timeoutMs = 100
 /* ---------- debounce / throttle ---------- */
 export const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
-/* ---------- icons: one family, 16px, 1.75 stroke, currentColor ---------- */
-const ICONS = {
-  star: 'M8 1.8l1.9 4 4.3.5-3.2 2.9.9 4.3L8 11.3 4.1 13.5l.9-4.3L1.8 6.3l4.3-.5z',
-  chevron: 'M4 6l4 4 4-4',
-  filter: 'M2 3h12l-4.5 5.5V13l-3 1.5V8.5z',
-  columns: 'M2 3h12v10H2zM6 3v10M10 3v10',
-  download: 'M8 2v8M4.5 7L8 10.5 11.5 7M2.5 13.5h11',
-  x: 'M3.5 3.5l9 9M12.5 3.5l-9 9',
-  search: 'M7 12.5a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11zM11 11l3.5 3.5',
-  bookmark: 'M4 2h8v12l-4-3-4 3z',
-  sort: 'M5 6l3-3 3 3M5 10l3 3 3-3',
-  menu: 'M2.5 4h11M2.5 8h11M2.5 12h11',
-  refresh: 'M13 8a5 5 0 1 1-1.6-3.7M13 2.5V5h-2.5',
-};
-export const icon = (name, size = 16) => `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="${ICONS[name] || ''}"/></svg>`;
+/* ---------- icons: Lucide (see icons.js), one family, currentColor ---------- */
+import { lucide } from './icons.js';
+const OLD = { chevron: 'chevron-down', filter: 'list-filter', columns: 'columns-3', sort: 'arrow-up-down', refresh: 'refresh-cw' };   // names used by older templates
+export const icon = (name, size = 16, cls = '') => lucide(OLD[name] || name, size, cls);
+/** Replace <span data-icon="name"> placeholders (used in static HTML) with the Lucide SVG. */
+export function hydrateIcons(root = document) { root.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = icon(el.dataset.icon, +el.dataset.size || 18); el.removeAttribute('data-icon'); }); }
 
 /* ---------- components ---------- */
 export const badge = (label, title, kind) => `<span class="badge ${kind}" title="${esc(title || '')}">${esc(label)}</span>`;

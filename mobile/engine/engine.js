@@ -12,6 +12,7 @@ import { OptionFeed } from './optionfeed.js';
 import { inSessionHours, lastSessionDate, marketState } from './marketclock.js';
 import { summarize } from './options.js';
 import { migrate } from './migrations.js';
+import { Metrics, routeLabel } from './metrics.js';
 import { SECTOR_INDICES } from './sectors.js';
 import { Securities } from './securities.js';
 
@@ -38,6 +39,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
   const ready = migrate(storage, { migrations: settings.migrations, current: settings.schemaVersion }).then(() => null, (e) => e);   // data upgrade runs before the first request is served
   if (!cfg.offline && settings.refreshList !== false) ready.then((bad) => { if (!bad) securities.load().then(() => securities.refresh()).catch(() => {}); });   // the saved list first, then a weekly refresh in the background
   else ready.then((bad) => { if (!bad) securities.load().catch(() => {}); });
+  const metrics = new Metrics();
   const started = now();
   let bootRefresh = null;   // the one background refresh in flight
 
@@ -46,6 +48,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
 
   /** Stale-while-revalidate: if anything is saved, answer from it AT ONCE and refresh behind the scenes (the UI polls again
    * while `refreshing` is true). Only a first run with nothing saved waits for NSE. */
+  const clockState = () => marketState(now(), market.live.received ? market.liveSeen() : {});
   const ttl = (open, closed) => (inSessionHours(now()) ? open : closed);   // data only changes while the market trades
 
   /** What the live overlay should do after a base refresh: keep refreshing during the session; after the close fetch once so the
@@ -175,7 +178,14 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
   const PUBLIC = new Set(['/api/auth/status', '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/forgot-user-id', '/api/auth/update-credentials']);
 
   /** handle('GET', '/api/stock/TCS', {token, headers, body}) */
-  async function handle(method, rawPath, { token = null, headers = {}, body = '' } = {}) {
+  async function handle(method, rawPath, opts = {}) {
+    const t0 = metrics.start();
+    const res = await handleInner(method, rawPath, opts);
+    metrics.observe(routeLabel(rawPath), res.status, t0);
+    return res;
+  }
+
+  async function handleInner(method, rawPath, { token = null, headers = {}, body = '' } = {}) {
     const u = new URL(rawPath, 'http://app.local'), p = u.pathname, qs = u.searchParams;
     const bad = await ready;
     if (bad) return err(500, `Your saved data was not changed. ${String(bad.message).slice(0, 200)}`, { dataUpgrade: false });
@@ -210,6 +220,11 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
       let m = /^\/api\/stock\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await stockPayload(sym)) : err(400, 'bad symbol'); }
       if (p === '/api/search') return json(await market.search(qs.get('q') || ''));
+      m = /^\/api\/quote\/([^/]+)$/.exec(p);
+      if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.quote(sym, clockState(), qs.get('fresh') === '1')) : err(400, 'bad symbol'); }
+      if (p === '/api/quotes') { const list = (qs.get('symbols') || '').split(',').filter(Boolean); return list.length ? json(await market.quotes(list, clockState(), qs.get('fresh') === '1')) : err(400, 'symbols is required (comma separated, at most 50)'); }
+      m = /^\/api\/history\/([^/]+)$/.exec(p);
+      if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.history(sym, (qs.get('range') || '1M').toUpperCase())) : err(400, 'bad symbol'); }
       m = /^\/api\/peers\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.peers(sym)) : err(400, 'bad symbol'); }
       m = /^\/api\/news\/(india|global)$/.exec(p);
@@ -221,7 +236,11 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
         return json({ symbols: await feed.symbols(), auto: true, feed: st, scheduler: { inbox: '', intervalSeconds: 0, lastRun: st.lastCheck, nextRun: null, result: st.result }, snapshots: await opts.snapshots(10), dbPath: 'app-private storage' });
       }
       if (p === '/api/audit') return json({ entries: await opts.auditLog(qs.get('limit') || '30'), verify: await opts.verifyAudit() });
-      if (p === '/api/metrics') return json({ platform: 'mobile', nse: { offline: cfg.offline, available: nse.available(), retryInSeconds: nse.retryInSeconds() } });
+      if (p === '/api/metrics') {
+        const c = cache.stats, total = c.hits + c.misses + c.coalesced;
+        return json({ platform: 'mobile', ...metrics.snapshot(), cache: { ...c, hitRate: total ? Math.round(((c.hits + c.coalesced) / total) * 1000) / 1000 : null },
+          nse: { offline: cfg.offline, available: nse.available(), retryInSeconds: nse.retryInSeconds(), ...nse.stats }, market: marketState(now(), market.live.received ? market.liveSeen() : {}) });
+      }
       if (p === '/api/options') { const sym = qs.get('symbol') || 'NIFTY'; return OPT_SYMBOL.test(sym) ? json(await optionChain(sym, (qs.get('expiry') || '').slice(0, 32))) : err(400, 'bad symbol'); }
       return err(404, 'not found');
     } catch (e) {

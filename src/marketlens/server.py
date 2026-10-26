@@ -22,7 +22,7 @@ import uuid
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import accounts, analysis, market, news, nse, optiondb, options, ratelimit, scheduler, securities, store
+from . import accounts, analysis, market, marketclock, news, nse, optiondb, options, ratelimit, scheduler, securities, store
 from .config import settings
 from .metrics import metrics
 
@@ -59,6 +59,8 @@ def bootstrap_payload():
             raise
         boot = dict(snap, stale=True, staleReason=str(e)[:200], retryInSeconds=nse.retry_in_seconds())
     boot["offline"] = settings.offline
+    newest = max((x.get("ts") or "" for x in boot.get("stocks", [])), default="")
+    boot["market"] = marketclock.market_state(time.time(), received=len(boot.get("stocks", [])), newest=newest)
     valid = {sec for sec, _ in market.SECTOR_INDICES}
     boot["sectorIndices"] = [x for x in boot.get("sectorIndices", []) if x.get("sector") in valid]   # tiles saved by an older release carry old labels
     boot["stocks"] = [dict(s, sector=market.SECTOR_MAP.get(s["sym"], "Other"), techSnap=analysis.technical_snapshot(s)) for s in boot["stocks"]]   # classification applied at serve time, so saved snapshots follow the current list
@@ -127,6 +129,10 @@ def route_label(path):
         return "/api/stock/:sym"
     if path.startswith("/api/peers/"):
         return "/api/peers/:sym"
+    if path.startswith("/api/quote/"):
+        return "/api/quote/:sym"
+    if path.startswith("/api/history/"):
+        return "/api/history/:sym"
     if path.startswith("/api/news/stock/"):
         return "/api/news/stock/:sym"
     if re.fullmatch(r"/api/news/(india|global)", path):
@@ -142,7 +148,7 @@ def classify(method, path):
         return None
     if method == "POST":
         return "auth" if path.startswith("/api/auth/") else "write"
-    if path.startswith(("/api/stock/", "/api/peers/", "/api/search", "/api/news/")) or path == "/api/options":
+    if path.startswith(("/api/stock/", "/api/peers/", "/api/quote/", "/api/quotes", "/api/history/", "/api/search", "/api/news/")) or path == "/api/options":
         return "expensive"
     return "read" if path.startswith("/api/") else "static"
 
@@ -459,6 +465,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(stock_payload(sym))
         if p == "/api/search":
             return self._json(market.search(qs.get("q", [""])[0]))
+        m = re.match(r"^/api/quote/([^/]+)$", p)
+        if m:
+            sym = urllib.parse.unquote(m.group(1)).upper()
+            return self._json(market.quote(sym, fresh=bool(qs.get("fresh")))) if market.SYMBOL_RE.match(sym) else self._error(400, "bad symbol")
+        if p == "/api/quotes":
+            listed = [x for x in qs.get("symbols", [""])[0].split(",") if x]
+            return self._json(market.quotes(listed, fresh=bool(qs.get("fresh")))) if listed else self._error(400, "symbols is required (comma separated, at most 50)")
+        m = re.match(r"^/api/history/([^/]+)$", p)
+        if m:
+            sym = urllib.parse.unquote(m.group(1)).upper()
+            return self._json(market.history(sym, qs.get("range", ["1M"])[0].upper())) if market.SYMBOL_RE.match(sym) else self._error(400, "bad symbol")
         m = re.match(r"^/api/peers/([^/]+)$", p)
         if m:
             sym = urllib.parse.unquote(m.group(1)).upper()

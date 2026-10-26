@@ -14,3 +14,7 @@ html.native footer { padding-bottom: calc(var(--sab) + var(--space-4, 16px)); }
 html.native main { min-height: 60vh; }
 /* No rubber-band scrolling of the whole page, and no grey flash when tapping. */
 html.native { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+
+/* The slide-in menu also starts clear of the status bar / camera cut-out. */
+@media (max-width: 860px) { html.native nav.main { padding-top: max(1cm, calc(var(--sat) + 10px)); } }
+html.native .toasts { bottom: max(1rem, var(--sab)); }

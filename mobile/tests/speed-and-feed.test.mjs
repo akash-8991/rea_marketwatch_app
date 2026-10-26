@@ -156,7 +156,7 @@ function tool(name, a) {
     default: throw new Error('unexpected tool ' + name);
   }
 }
-const engineOn = (srv, extra = {}) => createEngine({ storage: extra.storage || new MemoryStorage(), fetchFn: srv.fetch, settings: { cmUrl: MCP, bhavcopyUrl: MCP, requireLogin: false, universeSize: 50, refreshList: false, nseDelayMs: 0, feedDelayMs: 0, nseTimeoutMs: 100 } });
+const engineOn = (srv, extra = {}) => createEngine({ now: () => Date.parse('2026-10-24T12:00:00Z'), storage: extra.storage || new MemoryStorage(), fetchFn: srv.fetch, settings: { cmUrl: MCP, bhavcopyUrl: MCP, requireLogin: false, universeSize: 50, refreshList: false, nseDelayMs: 0, feedDelayMs: 0, nseTimeoutMs: 100 } });
 
 test('first run: the whole home page costs 6 tool calls (one bulk quote for 50 stocks), not one per stock', async () => {
   const srv = mcpServer({ missRate: 0.6 }), e = engineOn(srv);

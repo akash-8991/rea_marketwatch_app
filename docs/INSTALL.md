@@ -14,13 +14,13 @@ Check Python: `python3 --version` (on Windows: `py --version`).
 ## 2. Install
 
 ### Option A: from the release package (recommended)
-Download `marketlens-0.4.0-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
+Download `marketlens-0.5.0-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
 
 ```bash
 shasum -a 256 -c SHA256SUMS.txt          # macOS/Linux: checks both files; "OK" for the one you downloaded
 python3 -m venv ~/marketlens-env         # a private environment keeps it separate from other Python tools
 source ~/marketlens-env/bin/activate     # Windows: %USERPROFILE%\marketlens-env\Scripts\activate
-pip install marketlens-0.4.0-py3-none-any.whl
+pip install marketlens-0.5.0-py3-none-any.whl
 marketlens
 ```
 (`shasum -c` reports "FAILED open or read" for a file you did not download; that is expected.)
@@ -163,10 +163,12 @@ password twice). `marketlens --list-users` shows who is registered.
 ## 10. For developers
 ```bash
 pip install -e .
-PYTHONPATH=src python3 -m unittest discover -s tests          # 140 offline tests, no network needed
+PYTHONPATH=src python3 -m unittest discover -s tests          # 165 offline tests, no network needed
 python3 tools/loadtest.py --url http://127.0.0.1:8080 --concurrency 1 16 --seconds 8 --cookie "ml_session=<cookie>"
 python3 -m pip wheel . --no-deps -w dist                       # build the wheel (needs setuptools)
 ```
+Interface build files (only if you change interface classes or icons; installing and running need no Node): `cd ui && npm ci && npm run build`, details in `docs/RELEASING.md`.
+Benchmarks: `tools/bench-engine.mjs`, `tools/loadtest.py`, `tools/payload.mjs` (method and results in `docs/PERFORMANCE.md`).
 More: `docs/ARCHITECTURE.md` (design and trade-offs), `docs/OPERATIONS.md` (limits, audit log, accounts, runbook),
 `docs/ASSESSMENT.md` (findings and measured before/after).
 

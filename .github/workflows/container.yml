@@ -8,9 +8,9 @@ on:
   push:
     branches: [main]
     tags: ['v*']
-    paths: ['src/**', 'Dockerfile', 'pyproject.toml', 'MANIFEST.in', '.dockerignore', '.github/workflows/container.yml']
+    paths: ['src/**', 'ui/**', 'Dockerfile', 'pyproject.toml', 'MANIFEST.in', '.dockerignore', '.github/workflows/container.yml']
   pull_request:
-    paths: ['src/**', 'Dockerfile', 'pyproject.toml', 'MANIFEST.in', '.dockerignore', '.github/workflows/container.yml']
+    paths: ['src/**', 'ui/**', 'Dockerfile', 'pyproject.toml', 'MANIFEST.in', '.dockerignore', '.github/workflows/container.yml']
   workflow_dispatch:
 
 permissions:

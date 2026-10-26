@@ -14,8 +14,11 @@ Environment variables: `NSE_CM_MCP_URL`, `NSE_BHAVCOPY_MCP_URL`, `NSE_FO_MCP_URL
 |---|---|
 | `GET /healthz` | **Liveness**: the process answers. No dependencies checked. |
 | `GET /readyz` | **Readiness**: data folder writable, SQLite opens, and a saved snapshot exists or NSE is reachable. `503` otherwise. |
-| `GET /api/metrics` | Per-route request counts by status class, latency p50/p95/p99/max (last 2,000 requests per route), in-flight gauge, counters (`rate_limited`, `load_shed`, `internal_errors`, `connections_refused`), web vitals from real page loads, **data age** per dataset, NSE breaker state, scheduler state. Labels are route templates, never raw paths or IDs. |
+| `GET /api/metrics` (phone engine too) | Per-route request counts by status class, latency p50/p95/p99/max (last 2,000 requests per route), in-flight gauge, counters (`rate_limited`, `load_shed`, `internal_errors`, `connections_refused`), web vitals from real page loads, **data age** per dataset, NSE breaker state, scheduler state. Labels are route templates, never raw paths or IDs. |
 | `GET /api/audit?limit=N` | Recent audit entries and whether the hash chain verifies. |
+| `GET /api/quote/<SYMBOL>[?fresh=1]` | lean quote: price, change, last-trade time and age, company, a status (`live`, `delayed`, `closed`, `stale`, `unavailable`). One NSE call, shared by simultaneous callers, cached 30 s while the market trades and 15 min otherwise; `fresh=1` bypasses the cache at most once per symbol per 5 s; answers from the saved copy (`stale`) if NSE has not replied in 6 s |
+| `GET /api/quotes?symbols=A,B,…` | the same for up to 50 symbols at once (invalid and duplicate symbols handled), order kept |
+| `GET /api/history/<SYMBOL>?range=1W\|1M\|3M\|6M\|1Y\|5Y\|10Y` | daily closes `[date, close, volume]`; NSE's history starts 1 Jan 2024 so long ranges are truncated and say so; fetched in 3-month pieces and saved for 12 h; `1D` answers `available:false` with the reason (no intraday data exists) |
 | `GET /api/peers/<SYMBOL>` | peer comparison for one stock (same industry, most traded); about 11 NSE calls, cached a minute |
 | `GET /api/config` | Version, flags, the rating thresholds, the active rate limits. |
 
@@ -107,3 +110,15 @@ audit log (see INSTALL.md section 2b). Releases and rollbacks of every artifact:
 Install: `pip install marketlens-<version>-py3-none-any.whl`. Upgrade: install the new wheel over it; the database
 migrates itself. Rollback: reinstall the previous wheel (see the migration note above for the database). The package
 has no dependencies and bundles no NSE data.
+
+## Latency and load controls (what each one is for)
+| Control | Setting | Protects |
+|---|---|---|
+| Two NSE lanes, each with a warm session | `MAX_WORKERS = 2` | NSE's edge (never more than two requests in flight) and latency (a misrouted call costs one request, not three) |
+| Pacing gap after a successful call | 150 ms, held by the lane, not added to the reply | NSE politeness without slowing the caller |
+| Backoff after real errors, give up after 5 | 60 ms doubling to 1 s | a failing NSE is not hammered; errors surface in about a second |
+| Circuit breaker on 401/403/429 | 15 min, saved on disk | an NSE block is respected across restarts |
+| Quote deadline | 6 s (`QUOTE_DEADLINE`, `quoteDeadlineMs`) | a stuck NSE call cannot hold a page; the saved copy is shown as `stale` and the call finishes in the background |
+| Search deadline | 450 ms | typing stays smooth when NSE's symbol search is slow |
+| Request coalescing | one in-flight request per key | a burst of identical requests costs one NSE call |
+| Cache TTLs | quotes 30 s open / 15 min closed; history 12 h; peers ranking 30 min | NSE updates about once a minute; asking more often returns the same numbers |

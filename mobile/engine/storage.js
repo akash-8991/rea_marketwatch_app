@@ -53,11 +53,12 @@ export function lock(name, fn) {
 
 /** In-memory TTL cache with stale-on-error, the JS counterpart of store.cached(). */
 export class Cache {
-  constructor(now = () => Date.now()) { this.m = new Map(); this.inflight = new Map(); this.now = now; }
+  constructor(now = () => Date.now()) { this.m = new Map(); this.inflight = new Map(); this.now = now; this.stats = { hits: 0, misses: 0, coalesced: 0 }; }
   async cached(key, ttlSeconds, fn) {
     const hit = this.m.get(key);
-    if (hit && hit.until > this.now()) return hit.val;
-    if (this.inflight.has(key)) return this.inflight.get(key);
+    if (hit && hit.until > this.now()) { this.stats.hits++; return hit.val; }
+    if (this.inflight.has(key)) { this.stats.coalesced++; return this.inflight.get(key); }   // a second caller shares the first one's request
+    this.stats.misses++;
     const p = (async () => {
       try {
         const val = await fn();

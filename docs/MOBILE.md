@@ -74,6 +74,11 @@ live call), made two at a time, so they arrive over a few seconds with the most-
 - **Tables never wrap.** Text stays on one line and a wide table scrolls sideways inside its own box; the page itself never scrolls sideways.
 - **News and updates** use a medium text size (headlines 14 px, meta lines 13 px, update headlines 18 px).
 
+## 2e. Watchlist, chart and paper trading
+The phone app has the same interface as the desktop: left menu that slides in, command palette (tap the search box), the interactive Watchlist (saved prices appear at
+once, fresh ones fill in within seconds), the stock page with 1W to 10Y charts (NSE history starts 1 Jan 2024), and Paper trading with the strategy lab.
+Details: [UI.md](UI.md). Speed numbers and method: [PERFORMANCE.md](PERFORMANCE.md).
+
 ## 3. What is different from the desktop app
 - **Foreground only.** The app refreshes while it is open. Android does not let it run in the background, so there is no
   2.5-minute background download. The option chain checks for a newer file when you open the screen, at most every 20 minutes.

@@ -1,6 +1,7 @@
 /* NSE market data assembly: universe snapshot, per-stock detail, background extras, symbol search. Port of market.py. */
 import * as analysis from './analysis.js';
 import { SECTOR_INDICES } from './sectors.js';
+import { inSessionHours } from './marketclock.js';
 export const HEADLINE_INDICES = ['NIFTY 50', 'NIFTY BANK', 'NIFTY NEXT 50', 'NIFTY MIDCAP 100'];
 export const SYMBOL_RE = /^[A-Za-z0-9&_-]{1,24}$/;
 const DIV_RE = /(?:Rs\.?|Re\.?|INR)\s*([0-9]+(?:\.[0-9]+)?)/i;
@@ -30,6 +31,9 @@ export class Market {
     Object.assign(this, { nse, snaps, cache, securities, now });
     this.universeSize = settings.universeSize || 60;
     this.extrasJob = { state: 'idle', done: 0, total: 0 };
+    this.freshAt = new Map();
+    this.searchDeadlineMs = settings.searchDeadlineMs || 450;   // symbol search answers from saved matches if NSE's search has not replied by then
+    this.quoteDeadlineMs = settings.quoteDeadlineMs || 6000;   // a quote is answered from the saved copy if NSE has not replied by then
     this.live = { quotes: {}, received: 0, newest: '', job: { state: 'idle', done: 0, total: 0 }, checkedFor: null };
   }
 
@@ -209,7 +213,9 @@ export class Market {
     results = results.concat(this.securities.searchNames(raw).filter((h) => !have.has(h.symbol)).slice(0, 6).map((h) => ({ symbol: h.symbol, name: h.name, last_close: null, pct_change: null, last_date: null, source: 'list' })));
     if (this.nse.available()) {
       try {
-        const remote = await this.cache.cached('search:' + q, 600, () => this.nse.bh('search_symbols', { query: q }));
+        const pending = this.cache.cached('search:' + q, 600, () => this.nse.bh('search_symbols', { query: q }));
+        pending.catch(() => {});   // after the deadline the NSE call still finishes and is cached, so the next keystroke or repeat is complete and instant
+        const remote = await withDeadline(pending, this.searchDeadlineMs);
         const seen = new Set(results.map((r) => r.symbol));
         results = results.concat((remote.results || []).filter((r) => !seen.has(r.symbol)).slice(0, 12).map((r) => ({ ...r, source: 'nse' })));
       } catch (e) { note = 'NSE search is unavailable right now; showing matches from saved data.'; }
@@ -257,4 +263,83 @@ export class Market {
     out.rank = ranked.includes(sym) ? ranked.indexOf(sym) + 1 : null;
     return out;
   }
+
+  /* ---------- lean quotes (one NSE call each, coalesced and cached) ---------- */
+  quoteTtl() { return inSessionHours(this.now().getTime()) ? 30 : 900; }   // NSE itself refreshes about once a minute; asking more often returns the same numbers
+
+  /** One quote in the shape the UI needs, with an honest status. `state` is the market clock's verdict (see marketclock.js). */
+  async quote(sym, state, fresh = false) {
+    const t0 = Date.now();
+    if (fresh && Date.now() - (this.freshAt.get(sym) || 0) >= 5000) { this.freshAt.set(sym, Date.now()); this.cache.m.delete('lq:' + sym); }   // 'refresh now', at most once per symbol per 5 s
+    const known = this.live.quotes[sym];
+    let q = null, fromCache = false, stale = false, error = null;
+    try {
+      const hit = this.cache.m.get('lq:' + sym);
+      fromCache = !!(hit && hit.until > this.now().getTime());
+      const pending = this.cache.cached('lq:' + sym, this.quoteTtl(), () => this.nse.cm('cm_get_stock_quote', { symbol: sym }));
+      pending.catch(() => {});   // if the deadline below wins, the request still finishes in the background and fills the cache for the next caller
+      q = (((await withDeadline(pending, this.quoteDeadlineMs)) || {}).stock) || null;
+    } catch (e) {
+      error = String(e.message || e).slice(0, 120);
+      const saved = ((await this.snaps.get('bootstrap')) || { stocks: [] }).stocks.find((x) => x.sym === sym) || known;
+      if (saved) { stale = true; q = { lastTradedPrice: saved.price, preClosePrice: saved.prev, volume: saved.volume, latestTimestamp: saved.ts, perChange: saved.prev ? analysis.pyRound(((saved.price - saved.prev) / saved.prev) * 100, 2) : null }; }
+    }
+    const row = this.securities.get(sym) || {};
+    if (!q || !q.lastTradedPrice) return { sym, name: row.company || null, status: 'unavailable', reason: error || 'NSE has no quote for this symbol', exchange: 'NSE', fetchedAt: Date.now() };
+    const price = q.lastTradedPrice, prev = q.preClosePrice, abs = prev != null ? analysis.pyRound(price - prev, 2) : null;
+    const chg = q.perChange != null ? q.perChange : prev ? analysis.pyRound(((price - prev) / prev) * 100, 2) : null;
+    const ts = q.latestTimestamp || null, ageMs = ts ? Math.max(0, this.now().getTime() - Date.parse(ts.replace(' ', 'T') + '+05:30')) : null;
+    let status = 'closed';
+    if (stale) status = 'stale';
+    else if (state && state.live) status = ageMs != null && ageMs > 5 * 60 * 1000 ? 'delayed' : 'live';
+    return { sym, name: row.company || null, industry: row.industry || null, exchange: 'NSE', price, prev, abs, chg, volume: q.volume ?? null, valueCr: q.value ?? null,
+      hi52: q.fiftyTwoWeekHigh ?? null, lo52: q.fiftyTwoWeekLow ?? null, ts, ageMs, status, fromCache, fetchedAt: Date.now(), ms: Date.now() - t0, ...(stale ? { reason: error } : {}) };
+  }
+
+  /** Many quotes at once for the watchlist: at most 50 distinct valid symbols, fetched in parallel (the client keeps two lanes busy), order kept. */
+  async quotes(symbols, state, fresh = false) {
+    const seen = new Set(), list = [];
+    for (const raw of symbols) { const sym = String(raw || '').trim().toUpperCase(); if (sym && !seen.has(sym)) { seen.add(sym); list.push(sym); } }
+    const out = await Promise.all(list.slice(0, 50).map((sym) => (SYMBOL_RE.test(sym) ? this.quote(sym, state, fresh) : Promise.resolve({ sym, status: 'unavailable', reason: 'not a valid NSE symbol', exchange: 'NSE', fetchedAt: Date.now() }))));
+    return { quotes: out, requested: list.length, truncated: list.length > 50, fetchedAt: Date.now() };
+  }
+
+  /* ---------- history for the chart (daily closes; NSE keeps them from 1 Jan 2024) ---------- */
+  static RANGE_DAYS = { '1W': 7, '1M': 31, '3M': 92, '6M': 183, '1Y': 366, '5Y': 1830, '10Y': 3660 };
+
+  /** Daily closes for a range. NSE returns at most three months per call and the next call needs the previous one's `next_end_date`, so chunks are
+   * fetched one after another and the result saved: later ranges, and the next visit, cost nothing. */
+  async history(sym, range) {
+    const days = Market.RANGE_DAYS[range];
+    if (!days) return { sym, range, available: false, reason: range === '1D' ? 'NSE’s servers provide daily data only, so there is no intraday chart.' : 'unknown range' };
+    const key = 'hist:' + sym, cutoff = isoDay(new Date(this.now().getTime() - days * 86400000));
+    let rec = await this.snaps.get(key);
+    if (rec && (await this.snaps.age(key)) > 12 * 3600) rec = null;                       // older than half a day: start over
+    const covers = (r) => r && (r.complete || (r.points.length && r.points[0][0] <= cutoff));
+    if (!covers(rec)) {
+      const points = rec ? [...rec.points] : [];
+      let end = rec ? rec.next || '' : '', next = rec ? rec.next || null : null, complete = false, guard = 0;
+      while (!complete && guard++ < 16 && (!points.length || points[0][0] > cutoff)) {
+        const h = await this.nse.bh('get_stock_history', { symbol: sym, months: 3, endDate: end });
+        const rows = (h.data || []).filter((r) => r.close).map((r) => [r.date, r.close, r.volume ?? null]);
+        if (!rows.length) { complete = true; break; }
+        points.unshift(...rows);                                                          // older chunks go in front
+        next = h.next_end_date || null;
+        if (!next) { complete = true; break; }
+        end = next;
+      }
+      rec = { points: dedupe(points), complete, next };
+      await this.snaps.put(key, rec);
+    }
+    const pts = rec.points.filter((p) => p[0] >= cutoff);
+    const earliest = rec.points.length ? rec.points[0][0] : null;
+    const truncated = !!(earliest && earliest > cutoff && rec.complete);
+    return { sym, range, available: pts.length > 0, points: pts, from: pts.length ? pts[0][0] : null, to: pts.length ? pts[pts.length - 1][0] : null, earliest, truncated,
+      ...(truncated ? { note: `NSE’s history starts on ${earliest}; showing all of it.` } : {}), ...(pts.length ? {} : { reason: 'no price history returned for this symbol' }) };
+  }
 }
+
+/** Reject after ms; the underlying promise keeps running. */
+const withDeadline = (p, ms) => new Promise((res, rej) => { const t = setTimeout(() => rej(new Error(`NSE did not answer within ${ms / 1000} s`)), ms); p.then((v) => { clearTimeout(t); res(v); }, (e) => { clearTimeout(t); rej(e); }); });
+
+const dedupe = (pts) => { const seen = new Set(); return pts.filter((p) => (seen.has(p[0]) ? false : (seen.add(p[0]), true))).sort((a, b) => (a[0] < b[0] ? -1 : 1)); };

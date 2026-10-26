@@ -1,5 +1,6 @@
 /* MarketLens app (ES module): hash-routed single page. Data: NSE via the local server. See data.js, lib.js, screener.js. */
-import { startVitals, autoScrollTables, tint, sgn, compact, $, $$, esc, money, signed, cls, arrow, chgPct, pos52, idxChange, fmtDate, symLink, secTag, store, api, conn, onConn, badge, toneKind, sparkline, skeleton, emptyState, errorState, safeUrl, icon } from './lib.js';
+import { buttonClass, statusBadge, alert, toast, ago } from './ui.js';
+import { startVitals, hydrateIcons, autoScrollTables, tint, sgn, compact, $, $$, esc, money, signed, cls, arrow, chgPct, pos52, idxChange, fmtDate, symLink, secTag, store, api, conn, onConn, badge, toneKind, sparkline, skeleton, emptyState, errorState, safeUrl, icon } from './lib.js';
 
 const D = window.MLData;
 const { stocks, bySym } = D;
@@ -17,6 +18,9 @@ startVitals();
     else if (ageMin != null && ageMin > 10) { state = 'delayed'; msg = `Delayed: data was fetched ${Math.round(ageMin)} min ago (NSE session ${asOf}).`; }
     else msg = D.market ? `Market open · prices update about every minute · last refresh ${at}.` : `Live · NSE session ${asOf} · fetched ${at}.`;
     if (conn.updating && state !== 'off') msg += ' Updating…';
+    const pill = $('#status-pill');
+    if (pill) { const L = { live: ['Live', 'success', 'circle-dot'], closed: ['Market closed', 'flat', 'moon'], stale: ['Stale', 'warning', 'triangle-alert'], delayed: ['Delayed', 'warning', 'clock'], off: ['Disconnected', 'danger', 'wifi-off'] }[state];
+      pill.className = `pill pill-${L[1]}`; pill.innerHTML = `${icon(L[2], 12)}<span class="pill-text">${L[0]}</span>`; pill.title = msg; }
     el.className = `banner ${state}`;
     el.innerHTML = `<span class="dot ${state}" aria-hidden="true"></span><span><span class="state-name">${{ live: 'Live', closed: 'Market closed', stale: 'Stale', delayed: 'Delayed', off: 'Disconnected' }[state]}</span> ${esc(msg)}</span>`;
   }
@@ -313,67 +317,68 @@ startVitals();
     }
     return detailCache.get(sym);
   };
-  let quote = null, quoteRange = 'all';
-  function rangeRows(h) {
-    const n = quoteRange === 'w' ? 5 : quoteRange === 'm' ? 22 : h.length;
-    return h.slice(-n);
+  let quote = null;
+  /* ---------- stock page: price header first (one lean NSE call), chart and details load independently ---------- */
+  const headSkeleton = '<header class="qhead"><div class="grid gap-2" role="status" aria-label="Loading price"><div class="animate-pulse rounded-md bg-muted" style="height:2rem;width:12rem"></div><div class="animate-pulse rounded-md bg-muted" style="height:2.5rem;width:16rem"></div></div></header>';
+  function headHtml(sym, q) {
+    const inWl = store.get('ml.watchlist', []).includes(sym);
+    const actions = `<div class="qactions flex flex-wrap items-center gap-2"><button type="button" id="q-refresh" class="${buttonClass({ variant: 'outline' })}" aria-label="Refresh ${esc(sym)} now">${icon('refresh-cw', 16)}Refresh</button>
+      <button type="button" id="wl-btn" class="${buttonClass({ variant: inWl ? 'secondary' : 'default' })}" aria-pressed="${inWl}">${icon('star', 16)}${inWl ? 'In watchlist' : 'Add to watchlist'}</button></div>`;
+    if (!q || q.status === 'unavailable') {
+      return `<header class="qhead"><div><h1>${esc(sym)} <small class="muted">NSE</small></h1>${q && q.name ? `<p class="company">${esc(q.name)}</p>` : ''}
+        ${alertHtml({ variant: 'destructive', title: 'No quote available', text: (q && q.reason) || 'NSE returned nothing for this symbol.', actionLabel: 'Retry', actionId: 'q-retry' })}</div>${actions}</header>`;
+    }
+    const sign = q.chg == null ? '' : cls(q.chg);
+    return `<header class="qhead"><div>
+      <h1>${esc(sym)} <small class="muted">${esc(q.industry || 'NSE')} · ${esc(q.exchange || 'NSE')}</small></h1>${q.name ? `<p class="company">${esc(q.name)}</p>` : ''}
+      <div class="qprice flex flex-wrap items-baseline gap-3"><span class="big" id="q-price">${money(q.price)}</span><span class="${sign} font-semibold" id="q-chg">${q.chg == null ? '' : `${arrow(q.chg)} ${signed(q.abs)} (${signed(q.chg)}%)`}</span><span id="q-status">${statusBadge(q.status, q.reason || '')}</span></div>
+      <p class="muted" id="q-meta">${q.ts ? `Last trade ${esc(q.ts)}${q.ageMs != null ? ` (${ago(q.ageMs)})` : ''}` : ''} · Source: NSE · fetched ${new Date(q.fetchedAt).toLocaleTimeString('en-IN')}${q.fromCache ? ' · from cache' : ''}</p>
+      ${q.status === 'stale' ? alertHtml({ variant: 'warning', title: 'Showing saved data', text: 'NSE could not be reached, so this may be out of date.' }) : ''}</div>${actions}</header>`;
   }
-  function drawQuoteChart() {
-    const host = $('#chart'); if (!host || !quote || !quote.history.length) return;
-    const rows = rangeRows(quote.history), vals = rows.map((r) => r[4]);
-    if (vals.length < 2) { host.innerHTML = '<p class="muted pad">Not enough history for this range.</p>'; return; }
-    const W = host.clientWidth || 720, H = 300, pad = 8;
-    const min = Math.min(...vals), max = Math.max(...vals), rng = max - min || 1;
-    const x = (i) => pad + (i / (vals.length - 1)) * (W - pad * 2 - 44), y = (v) => pad + (1 - (v - min) / rng) * (H - pad * 2);
-    const line = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const c = vals[vals.length - 1] >= vals[0] ? 'var(--up)' : 'var(--down)';
-    const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => { const v = min + rng * f; return `<line x1="${pad}" x2="${W - 44}" y1="${y(v)}" y2="${y(v)}" class="grid"/><text x="${W - 40}" y="${y(v) + 4}" class="ax">${money(v, 0)}</text>`; }).join('');
-    host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" id="chart-svg">${grid}<polygon fill="${c}" opacity=".08" points="${x(0)},${H - pad} ${line} ${x(vals.length - 1)},${H - pad}"/>
-      <polyline fill="none" stroke="${c}" stroke-width="2" points="${line}"/><line id="xh" y1="${pad}" y2="${H - pad}" class="xh" style="display:none"/><circle id="dot" r="4" fill="${c}" style="display:none"/></svg><div id="tip" class="tip" style="display:none"></div>`;
-    const svg = $('#chart-svg'), tip = $('#tip'), xh = $('#xh'), dot = $('#dot');
-    svg.addEventListener('mousemove', (e) => {
-      const r = svg.getBoundingClientRect();
-      const i = Math.max(0, Math.min(vals.length - 1, Math.round(((e.clientX - r.left - pad) / (r.width - pad * 2 - 44)) * (vals.length - 1))));
-      xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.style.display = '';
-      dot.setAttribute('cx', x(i)); dot.setAttribute('cy', y(vals[i])); dot.style.display = '';
-      tip.style.display = ''; tip.style.left = `${Math.min(x(i) + 12, W - 170)}px`; tip.textContent = `${fmtDate(rows[i][0])} · ${money(vals[i])}`;
-    });
-    svg.addEventListener('mouseleave', () => { xh.style.display = dot.style.display = tip.style.display = 'none'; });
-  }
-  const smaN = (a, n) => (a.length >= n ? a.slice(-n).reduce((p, q) => p + q, 0) / n : null);
-  function rsi(a, n = 14) {
-    if (a.length <= n) return null;
-    let g = 0, l = 0;
-    for (let i = a.length - n; i < a.length; i++) { const d = a[i] - a[i - 1]; d >= 0 ? (g += d) : (l -= d); }
-    return l === 0 ? 100 : 100 - 100 / (1 + g / l);
-  }
-
+  const alertHtml = alert;
   views.quote = ([rawSym, tab]) => {
     const sym = decodeURIComponent(rawSym || '').toUpperCase();
     tab = tab || 'overview';
     return {
-      html: `${ticker()}<div id="qwrap"><p class="muted pad">Loading ${esc(sym)} from NSE…</p></div>`,
+      html: `${ticker()}<div id="qwrap"><div id="qhead">${headSkeleton}</div><div id="qchart"></div><div id="qbody"><div role="status" aria-label="Loading details">${skeleton(4)}</div></div></div>`,
       after() {
-        loadDetail(sym).then((d) => {
-          if (location.hash.split('/')[2] && decodeURIComponent(location.hash.split('/')[2]).toUpperCase() !== sym) return;
-          quote = d; renderQuote(d, tab);
-        }).catch((e) => {
-          $('#qwrap').innerHTML = `<section class="card"><h1>${esc(sym)}</h1><p>Could not load this symbol from NSE right now.</p><p class="muted">${esc(e.message)}</p><a class="more" href="#/markets">« Markets</a></section>`;
-        });
+        const stillHere = () => location.hash.split('/')[2] && decodeURIComponent(location.hash.split('/')[2]).toUpperCase() === sym;
+        let lastQ = null, refreshing = false;
+        const wire = () => {
+          $('#q-retry')?.addEventListener('click', () => loadHead(true));
+          $('#q-refresh')?.addEventListener('click', () => loadHead(true));
+          $('#wl-btn')?.addEventListener('click', () => {
+            const cur = store.get('ml.watchlist', []), has = cur.includes(sym), next = has ? cur.filter((x) => x !== sym) : [...cur, sym];
+            store.set('ml.watchlist', next);
+            toast({ title: has ? `${sym} removed from watchlist` : `${sym} added to watchlist`, variant: has ? 'default' : 'success', actionLabel: has ? 'Undo' : '', onAction: () => { store.set('ml.watchlist', cur); $('#qhead').innerHTML = headHtml(sym, lastQ); wire(); }, duration: 4000 });
+            $('#qhead').innerHTML = headHtml(sym, lastQ); wire();
+          });
+        };
+        async function loadHead(manual = false) {
+          if (refreshing) return; refreshing = true;
+          const btn = $('#q-refresh'); if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
+          try {
+            const q = await api(`/api/quote/${encodeURIComponent(sym)}${manual ? '?fresh=1' : ''}`, { quiet: true, retries: 1 });
+            if (!stillHere()) return;
+            lastQ = q; $('#qhead').innerHTML = headHtml(sym, q); wire();
+            if (manual) q.status === 'unavailable' ? toast.error(`${sym} unavailable`, q.reason) : q.status === 'stale' ? toast.warn('Showing saved data', 'NSE could not be reached.') : toast.success(`${sym} refreshed`, '', { duration: 1800 });
+            else if (q.status === 'stale') toast.warn('Showing saved data', 'NSE could not be reached.', { dedupeMs: 60000 });
+          } catch (e) {
+            if (!stillHere()) return;
+            if (!lastQ) { $('#qhead').innerHTML = headHtml(sym, { status: 'unavailable', reason: e.message }); wire(); }
+            else toast.error('Refresh failed', e.message);
+          } finally { refreshing = false; }
+        }
+        loadHead();
+        const timer = setInterval(() => { if (!stillHere()) clearInterval(timer); else if (!document.hidden && lastQ && !(lastQ.status === 'closed')) loadHead(); }, 30000);   // cache-served, and only while the tab is visible and the market is trading
+        let stopChart = () => {};
+        import('./chart.js').then((m) => { if (stillHere()) stopChart = m.mount($('#qchart'), { sym }); });
+        unmountScreener = () => { clearInterval(timer); stopChart(); };
+        loadDetail(sym).then((d) => { if (!stillHere()) return; quote = d; renderQuote(d, tab); })
+          .catch((e) => { if (stillHere()) $('#qbody').innerHTML = alert({ variant: 'destructive', title: 'Could not load the details', text: e.message, actionLabel: 'Retry', actionId: 'qd-retry' }); $('#qd-retry')?.addEventListener('click', () => { detailCache.delete(sym); route(); }); });
       },
     };
   };
-
-  function loadStockNews(sym) {
-    api(`/api/news/stock/${encodeURIComponent(sym)}`).then((d) => {
-      const box = $('#qnews'); if (!box) return;
-      if (d.error) throw new Error(d.error);
-      if (d.disabled) { box.innerHTML = '<h2>News and sentiment</h2><p>News is turned off (started with --no-news).</p>'; return; }
-      const s = d.sentiment || {};
-      box.innerHTML = `<h2>News and sentiment</h2>${s.n ? `<p>${badge(s.label, '', toneKind(s.label))} <span class="muted">${s.n} headlines · ${s.pos} positive · ${s.neg} negative</span></p>` : '<p class="muted">No recent headlines found for this symbol.</p>'}${d.items.length ? newsList(d.items) : ''}
-        <p class="muted">Matches are by symbol and can include unrelated stories.</p>`;
-    }).catch((e) => { const box = $('#qnews'); if (box) box.innerHTML = `<h2>News and sentiment</h2><p>Could not load headlines right now.</p><p class="muted">${esc(e.message)}</p>`; });
-  }
 
   /* ---------- peer comparison: the same industry's most-traded stocks (industry list from NSE's Nifty Total Market constituents) ---------- */
   function loadPeers(sym) {
@@ -427,33 +432,27 @@ startVitals();
         <table class="tbl kv"><tbody><tr><td>Dividend yield (TTM)</td><td class="num">${F.yield != null ? F.yield + '%' : '—'}</td></tr><tr><td>Sector index P/E · P/B</td><td class="num">${F.sectorPE ?? '—'} · ${F.sectorPB ?? '—'}</td></tr><tr><td>Sector index dividend yield</td><td class="num">${F.sectorYield != null ? F.sectorYield + '%' : '—'}</td></tr></tbody></table>` : '<p class="muted">Corporate-action data is not available yet.</p>'}
         <p class="muted">${esc((F && F.basis) || 'Based on NSE dividends and corporate actions')}.</p></section></div>`;
     }
-    $('#qwrap').innerHTML = `<header class="qhead"><div><h1>${esc(sym)} <small class="muted">${d.industry ? esc(d.industry) : u && u.sector !== 'Other' ? esc(u.sector) : 'NSE'}${q.series ? ` · ${esc(q.series)}` : ''}</small></h1>
-        ${d.company ? `<p class="company">${esc(d.company)}</p>` : ''}
-        <div class="qprice"><span class="big">${money(price)}</span><span class="${cls(c)}">${arrow(c)} ${signed(q.change)} (${Math.abs(c).toFixed(2)}%)</span></div>
-        <p class="muted">${esc(q.latestTimestamp || '')}${d.stale ? ' · saved snapshot' : ''}</p></div>
-        <button id="wl-btn" class="btn ${inWl ? 'on' : ''}">${inWl ? '★ In watchlist' : '☆ Add to watchlist'}</button></header>
-      <section class="card"><div class="tabs" id="range">${[['w', '1W'], ['m', '1M'], ['all', `${h.length}D`]].map(([k, l]) => `<button data-r="${k}" class="${k === quoteRange ? 'on' : ''}">${l}</button>`).join('')}</div>
-        <div id="chart" class="chart"></div>${h.length ? '' : '<p class="muted">No daily history returned for this symbol.</p>'}</section>
-      <nav class="subtabs">${tabs.map((t) => `<a href="#/quote/${encodeURIComponent(sym)}/${t}" class="${t === tab ? 'on' : ''}">${tabName[t]}</a>`).join('')}</nav>${body}`;
-    drawQuoteChart(); paintLive();
+    $('#qbody').innerHTML = `<nav class="subtabs" aria-label="Stock sections">${tabs.map((t) => `<a href="#/quote/${encodeURIComponent(sym)}/${t}" class="${t === tab ? 'on' : ''}" ${t === tab ? 'aria-current="page"' : ''}>${tabName[t]}</a>`).join('')}</nav>${body}`;
+    paintLive();
     if (tab === 'overview') loadPeers(sym);
     if (tab === 'news') loadStockNews(sym);
-    $$('#range button').forEach((b) => b.addEventListener('click', () => { quoteRange = b.dataset.r; $$('#range button').forEach((x) => x.classList.toggle('on', x === b)); drawQuoteChart(); }));
-    $('#wl-btn').addEventListener('click', () => {
-      const cur = store.get('ml.watchlist', []);
-      store.set('ml.watchlist', cur.includes(sym) ? cur.filter((x) => x !== sym) : [...cur, sym]); renderQuote(d, tab);
-    });
   }
 
-  views.watchlist = () => {
-    const wl = store.get('ml.watchlist', []);
-    return {
-      html: `<h1>Watchlist</h1>${wl.length ? `<section class="card"><table class="tbl"><thead><tr><th>Stock</th><th class="num">Price</th><th class="num">Change</th><th></th></tr></thead><tbody>
-        ${wl.map((x) => { const s = bySym[x]; return `<tr><td><a href="#/quote/${encodeURIComponent(x)}">${esc(x)}</a></td>${s ? `<td class="num" data-px="${x}"></td><td class="num" data-chg="${x}"></td>` : '<td class="num muted" colspan="2">open to view</td>'}<td><button class="link" data-rm="${esc(x)}">Remove</button></td></tr>`; }).join('')}</tbody></table></section>`
-        : '<section class="card"><p>Your watchlist is empty. Open any stock page and use “Add to watchlist”. It is stored only in this browser.</p></section>'}`,
-      after() { $$('[data-rm]').forEach((b) => b.addEventListener('click', () => { store.set('ml.watchlist', store.get('ml.watchlist', []).filter((x) => x !== b.dataset.rm)); route(); })); },
-    };
-  };
+  views.paper = () => ({
+    html: `<h1>Paper trading</h1>${skeleton(5)}`,
+    after() {
+      import('./paper-view.js').then((m) => { if (location.hash.startsWith('#/paper')) unmountScreener = m.mount($('#app'), { D, stocks, bySym }); })
+        .catch((e) => { $('#app').innerHTML = errorState('Could not load paper trading', e.message, 'paper-retry'); $('#paper-retry')?.addEventListener('click', route); });
+    },
+  });
+
+  views.watchlist = () => ({
+    html: `<h1>Watchlist</h1>${skeleton(5)}`,
+    after() {
+      import('./dashboard.js').then((m) => { if (location.hash.startsWith('#/watchlist')) unmountScreener = m.mount($('#app'), { D, stocks, bySym }); })
+        .catch((e) => { $('#app').innerHTML = errorState('Could not load the watchlist', e.message, 'wl-retry'); $('#wl-retry')?.addEventListener('click', route); });
+    },
+  });
 
   /* ---------- screener: lazy-loaded module (js/screener.js) ---------- */
   let unmountScreener = null;
@@ -475,42 +474,25 @@ startVitals();
       $$('[data-pane]', t.parentElement).forEach((p) => p.classList.toggle('hide', p.dataset.pane !== b.dataset.t));
     })));
   }
-  function wireSearch() {
-    const input = $('#q'), box = $('#suggest'); let timer = null, seq = 0;
-    const show = (html) => { box.innerHTML = html; box.classList.remove('hide'); };
-    const item = (x) => `<a href="#/quote/${encodeURIComponent(x.symbol)}"><b>${esc(x.symbol)}</b> ${x.name ? `<span class="muted">${esc(x.name)}</span> ` : ''}<span class="muted">${x.last_close != null ? money(x.last_close) : ''}${x.pct_change != null ? ` · <span class="${cls(x.pct_change)}">${signed(x.pct_change)}%</span>` : ''}${x.source === 'nse' ? ' · NSE' : ''}</span></a>`;
-    const goto = (sym) => { location.hash = `#/quote/${encodeURIComponent(sym)}`; input.value = ''; box.classList.add('hide'); };
-    input.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const v = input.value.trim().toUpperCase();
-      if (/^[A-Z0-9&_-]{1,24}$/.test(v)) goto(v);
+  /* Header chrome: the search box opens the command palette (loaded on first use), keyboard shortcuts, theme switch, mobile menu. */
+  function wireChrome() {
+    const input = $('#q');
+    const openPalette = (prefill = '') => import('./palette.js').then((m) => m.open(prefill));
+    input.readOnly = true;                                              // typing happens in the palette, which has results, history and keyboard navigation
+    input.addEventListener('click', () => openPalette());
+    input.addEventListener('focus', () => { if (!document.querySelector('dialog[open]')) openPalette(); });
+    document.addEventListener('keydown', (e) => {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') || (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey)) { e.preventDefault(); openPalette(); }
     });
-    input.addEventListener('input', () => {
-      const v = input.value.trim().toUpperCase();
-      clearTimeout(timer);
-      if (!v) { box.classList.add('hide'); return; }
-      const local = stocks.filter((s) => s.sym.includes(v)).sort((a, b) => (!a.sym.startsWith(v)) - (!b.sym.startsWith(v)) || a.sym.localeCompare(b.sym)).slice(0, 6)
-        .map((s) => ({ symbol: s.sym, last_close: s.price, pct_change: +chgPct(s).toFixed(2), source: 'local' }));
-      show(local.map(item).join('') + '<span class="muted pad">Searching all NSE symbols… (Enter opens “' + esc(v) + '”)</span>');
-      const my = ++seq;
-      timer = setTimeout(() => {
-        api(`/api/search?q=${encodeURIComponent(v)}`, { retries: 0, quiet: true }).then((r) => {
-          if (my !== seq) return;
-          if (r.error) throw new Error(r.error);
-          const seen = new Set(), all = [...local, ...(r.results || [])].filter((x) => !seen.has(x.symbol) && seen.add(x.symbol)).slice(0, 12);
-          show((all.length ? all.map(item).join('') : '<span class="muted pad">No matches. Press Enter to try “' + esc(v) + '” directly.</span>') + (r.note ? `<span class="muted pad note">${esc(r.note)}</span>` : ''));
-        }).catch(() => { if (my === seq) show(local.map(item).join('') + '<span class="muted pad note">Search service unavailable; showing local matches. Press Enter to open “' + esc(v) + '” directly.</span>'); });
-      }, 300);
-    });
-    document.addEventListener('click', (e) => { if (!e.target.closest('.search')) box.classList.add('hide'); });
-    box.addEventListener('click', () => { input.value = ''; box.classList.add('hide'); });
+    const paintTheme = () => { const dark = document.documentElement.dataset.theme === 'dark'; $('#theme').innerHTML = icon(dark ? 'sun' : 'moon', 18); $('#theme').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'); };
     $('#theme').addEventListener('click', () => {
       const dark = document.documentElement.dataset.theme !== 'dark';
-      document.documentElement.dataset.theme = dark ? 'dark' : 'light'; store.set('ml.theme', dark ? 'dark' : 'light');
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light'; store.set('ml.theme', dark ? 'dark' : 'light'); paintTheme();
     });
+    paintTheme();
   }
-  function closeMenu() { const n = $('#nav'); if (n) { n.dataset.open = 'false'; $('#menu')?.setAttribute('aria-expanded', 'false'); } }
+  function closeMenu() { const n = $('#nav'); if (n) { n.dataset.open = 'false'; $('#menu')?.setAttribute('aria-expanded', 'false'); } document.querySelector('.scrim')?.remove(); }
   function route() {
     if (unmountScreener) { unmountScreener(); unmountScreener = null; }
     closeMenu();
@@ -533,8 +515,13 @@ startVitals();
     store.set('ml.dataVersion', 'nse2');
   }
   document.documentElement.dataset.theme = store.get('ml.theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  wireSearch();
-  $('#menu').addEventListener('click', () => { const open = $('#nav').dataset.open !== 'true'; $('#nav').dataset.open = open; $('#menu').setAttribute('aria-expanded', open); });
+  hydrateIcons();
+  wireChrome();
+  $('#menu').addEventListener('click', () => {
+    const open = $('#nav').dataset.open !== 'true'; $('#nav').dataset.open = open; $('#menu').setAttribute('aria-expanded', open);
+    document.querySelector('.scrim')?.remove();
+    if (open) { const sc = document.createElement('div'); sc.className = 'scrim'; sc.addEventListener('click', closeMenu); document.body.appendChild(sc); }
+  });
   if (window.MLUser) {
     $('#whoami').textContent = window.MLUser.name; $('#whoami').classList.remove('hide'); $('#logout').classList.remove('hide');
     $('#logout').addEventListener('click', async () => { $('#logout').disabled = true; try { await api('/api/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'MarketLens' }, body: '{}' }); } finally {
@@ -549,7 +536,6 @@ startVitals();
   setInterval(paintBanner, 30000);
   autoScrollTables(document.getElementById('app'));
   window.addEventListener('hashchange', route);
-  window.addEventListener('resize', drawQuoteChart);
   route();
   // refresh quotes every minute (the server caches and falls back to a saved snapshot)
   const refreshLoop = () => D.refresh().then(() => { updates = buildUpdates(); paintLive(); }).catch(() => {}).finally(() => setTimeout(refreshLoop, D.refreshing ? 3000 : 60000));   // quick polls while a background refresh runs

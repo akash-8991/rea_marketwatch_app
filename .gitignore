@@ -32,3 +32,6 @@ mobile/ios/
 # Android signing keys: never commit
 *.keystore
 *.jks
+
+# UI build tooling (Tailwind, Lucide): only its output is committed
+ui/node_modules/

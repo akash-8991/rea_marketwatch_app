@@ -30,6 +30,12 @@ def cached(key, ttl, fn):
         return val
 
 
+def forget(key):
+    """Drop one cached value (used by 'refresh now', which still goes through the single-flight lock)."""
+    with _glock:
+        _cache.pop(key, None)
+
+
 def clear_memory():
     with _glock:
         _cache.clear()

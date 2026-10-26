@@ -1,0 +1,33 @@
+/* Tailwind CSS v4 entry. Only theme + utilities are used (no preflight reset): the app's own stylesheet owns the base styles, Tailwind supplies the
+ * utility classes used by the newer components (static/js/ui.js and the lazy views). Colour utilities map to the shadcn/ui-style tokens that
+ * style.css defines for light and dark mode, so one token change re-themes everything. Build: `npm run build` in ui/ (output is committed). */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "../src/marketlens/static/js";
+@source "../src/marketlens/static/index.html";
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-popover: var(--surface);
+  --color-primary: var(--brand);
+  --color-primary-foreground: var(--brand-ink);
+  --color-secondary: var(--surface-2);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--text-muted);
+  --color-accent: var(--surface-2);
+  --color-border: var(--border);
+  --color-input: var(--border-strong);
+  --color-ring: var(--focus);
+  --color-selection: var(--selection);
+  --color-up: var(--up);
+  --color-up-bg: var(--up-bg);
+  --color-down: var(--down);
+  --color-down-bg: var(--down-bg);
+  --color-flat: var(--flat);
+  --color-flat-bg: var(--flat-bg);
+  --color-warn: var(--warn-text);
+  --color-warn-bg: var(--warn-bg);
+}

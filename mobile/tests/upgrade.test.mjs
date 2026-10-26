@@ -9,7 +9,7 @@ import { migrate, CURRENT_SCHEMA, DataTooNew } from '../engine/migrations.js';
 const H = { 'x-requested-with': 'MarketLens' };
 const ACCT = { name: 'Asha Rao', email: 'asha@example.com', dob: '1990-04-02', userId: 'asha.rao', password: 'tulip-orbit-77x' };
 const NOFILE = { fetchLatest: async () => null };
-const engine = (storage, settings = {}) => createEngine({ storage, optionSource: NOFILE, fetchFn: async () => new Response('', { status: 500 }), settings: { pbkdf2Iterations: 1000, refreshList: false, nseDelayMs: 0, ...settings } });
+const engine = (storage, settings = {}) => createEngine({ now: () => Date.parse('2026-10-24T12:00:00Z'), storage, optionSource: NOFILE, fetchFn: async () => new Response('', { status: 500 }), settings: { pbkdf2Iterations: 1000, refreshList: false, nseDelayMs: 0, ...settings } });
 const post = (e, p, body, token) => e.handle('POST', p, { token, headers: H, body: JSON.stringify(body) });
 const get = (e, p, token) => e.handle('GET', p, { token });
 

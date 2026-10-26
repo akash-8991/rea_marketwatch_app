@@ -3,9 +3,9 @@ import datetime
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
-from . import analysis, nse, securities, store
+from . import analysis, marketclock, nse, securities, store
 from .config import settings
 
 SECTOR_MAP = securities.SECTOR_MAP   # symbol -> industry, from NSE's Nifty Total Market list; the same dict is updated in place when the list is refreshed
@@ -241,7 +241,11 @@ def search(q):
     note = ""
     if nse.available():
         try:
-            remote = store.cached("search:" + q, 600, lambda: nse.bh("search_symbols", {"query": q}))
+            fut = _quote_pool.submit(store.cached, "search:" + q, 600, lambda: nse.bh("search_symbols", {"query": q}))
+            try:
+                remote = fut.result(timeout=SEARCH_DEADLINE)     # after the deadline the NSE call still finishes and is cached for the next keystroke
+            except FutureTimeout:
+                raise RuntimeError("NSE search is slow")
             seen = {r["symbol"] for r in results}
             results += [dict(r, source="nse") for r in remote.get("results", []) if r["symbol"] not in seen][:12]
         except Exception as e:
@@ -299,4 +303,132 @@ def peers(sym, limit=10):
         rows = list(ex.map(one, top + [sym]))
     out["peers"], out["self"] = rows[:-1], rows[-1]
     out["rank"] = (ranked.index(sym) + 1) if sym in ranked else None
+    return out
+
+
+# ---------- lean quotes (one NSE call each, coalesced and cached) ----------
+RANGE_DAYS = {"1W": 7, "1M": 31, "3M": 92, "6M": 183, "1Y": 366, "5Y": 1830, "10Y": 3660}
+
+
+def quote_ttl():
+    return 30 if marketclock.in_session_hours(time.time()) else 900   # NSE itself refreshes about once a minute
+
+
+_fresh_at = {}
+QUOTE_DEADLINE = 6.0
+SEARCH_DEADLINE = 0.45
+_quote_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="quote")
+FRESH_GUARD = 5.0   # "refresh now" may bypass the cache at most once per symbol per 5 s: a button mashed or a script cannot hammer NSE
+
+
+def quote(sym, state=None, fresh=False):
+    """One quote in the shape the UI needs, with an honest status: live, delayed, closed (market shut, last close), stale (saved copy because
+    NSE could not be reached) or unavailable. Concurrent callers for the same symbol share one NSE request."""
+    t0 = time.time()
+    key, stale, error, q = "lq:" + sym, False, None, None
+    if fresh and time.time() - _fresh_at.get(sym, 0) >= FRESH_GUARD:
+        _fresh_at[sym] = time.time()
+        store.forget(key)
+    try:
+        fut = _quote_pool.submit(store.cached, key, quote_ttl(), lambda: nse.cm("cm_get_stock_quote", {"symbol": sym}))
+        try:
+            q = (fut.result(timeout=QUOTE_DEADLINE) or {}).get("stock")     # if NSE has not replied by then the saved copy is used; the request still finishes and fills the cache
+        except FutureTimeout:
+            raise RuntimeError(f"NSE did not answer within {QUOTE_DEADLINE:g} s")
+    except Exception as e:
+        error = str(e)[:120]
+        saved = {x["sym"]: x for x in (store.disk_get("bootstrap") or {}).get("stocks", [])}.get(sym)
+        if saved:
+            stale = True
+            q = {"lastTradedPrice": saved.get("price"), "preClosePrice": saved.get("prev"), "volume": saved.get("volume"), "latestTimestamp": saved.get("ts")}
+    row = securities.get(sym) or {}
+    if not q or not q.get("lastTradedPrice"):
+        return {"sym": sym, "name": row.get("company"), "status": "unavailable", "reason": error or "NSE has no quote for this symbol", "exchange": "NSE", "fetchedAt": int(time.time() * 1000)}
+    price, prev = q["lastTradedPrice"], q.get("preClosePrice")
+    abs_ = round(price - prev, 2) if prev is not None else None
+    chg = q["perChange"] if q.get("perChange") is not None else (round((price - prev) / prev * 100, 2) if prev else None)
+    ts = q.get("latestTimestamp")
+    age_ms = None
+    if ts:
+        try:
+            age_ms = max(0, int((time.time() - datetime.datetime.fromisoformat(ts.replace(" ", "T")).replace(tzinfo=marketclock._IST).timestamp()) * 1000))
+        except ValueError:
+            pass
+    state = state or marketclock.market_state(time.time())
+    status = "stale" if stale else ("delayed" if state["live"] and age_ms is not None and age_ms > 300000 else "live") if state["live"] else "closed"
+    out = {"sym": sym, "name": row.get("company"), "industry": row.get("industry"), "exchange": "NSE", "price": price, "prev": prev, "abs": abs_, "chg": chg,
+           "volume": q.get("volume"), "valueCr": q.get("value"), "hi52": q.get("fiftyTwoWeekHigh"), "lo52": q.get("fiftyTwoWeekLow"), "ts": ts, "ageMs": age_ms,
+           "status": status, "fetchedAt": int(time.time() * 1000), "ms": round((time.time() - t0) * 1000)}
+    if stale:
+        out["reason"] = error
+    return out
+
+
+def quotes(symbols, state=None, fresh=False):
+    """Many quotes at once (at most 50 distinct valid symbols), fetched in parallel; order kept."""
+    seen, listed = set(), []
+    for raw in symbols:
+        sym = (raw or "").strip().upper()
+        if sym and sym not in seen:
+            seen.add(sym)
+            listed.append(sym)
+    state = state or marketclock.market_state(time.time())
+
+    def one(sym):
+        if not SYMBOL_RE.match(sym):
+            return {"sym": sym, "status": "unavailable", "reason": "not a valid NSE symbol", "exchange": "NSE", "fetchedAt": int(time.time() * 1000)}
+        return quote(sym, state, fresh)
+    with ThreadPoolExecutor(max_workers=max(2, nse.MAX_WORKERS * 2)) as ex:
+        out = list(ex.map(one, listed[:50]))
+    return {"quotes": out, "requested": len(listed), "truncated": len(listed) > 50, "fetchedAt": int(time.time() * 1000)}
+
+
+# ---------- history for the chart (daily closes; NSE keeps them from 1 Jan 2024) ----------
+def history(sym, rng):
+    """Daily closes for a range. NSE returns at most three months per call and the next call needs the previous one's next_end_date, so chunks are
+    fetched one after another and saved: later ranges, and the next visit, cost nothing."""
+    days = RANGE_DAYS.get(rng)
+    if not days:
+        return {"sym": sym, "range": rng, "available": False,
+                "reason": "NSE’s servers provide daily data only, so there is no intraday chart." if rng == "1D" else "unknown range"}
+    key = "hist-" + sym
+    cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+    rec = store.disk_get(key)
+    age = store.disk_age(key)
+    if rec and (age is None or age > 12 * 3600):
+        rec = None
+    covers = lambda r: r and (r["complete"] or (r["points"] and r["points"][0][0] <= cutoff))
+    if not covers(rec):
+        points = list(rec["points"]) if rec else []
+        end = (rec or {}).get("next") or ""
+        nxt, complete, guard = (rec or {}).get("next"), False, 0
+        while not complete and guard < 16 and (not points or points[0][0] > cutoff):
+            guard += 1
+            h = nse.bh("get_stock_history", {"symbol": sym, "months": 3, "endDate": end})
+            rows = [[r["date"], r["close"], r.get("volume")] for r in h.get("data", []) if r.get("close")]
+            if not rows:
+                complete = True
+                break
+            points = rows + points
+            nxt = h.get("next_end_date")
+            if not nxt:
+                complete = True
+                break
+            end = nxt
+        seen, uniq = set(), []
+        for p in sorted(points, key=lambda x: x[0]):
+            if p[0] not in seen:
+                seen.add(p[0])
+                uniq.append(p)
+        rec = {"points": uniq, "complete": complete, "next": nxt}
+        store.disk_put(key, rec)
+    pts = [p for p in rec["points"] if p[0] >= cutoff]
+    earliest = rec["points"][0][0] if rec["points"] else None
+    truncated = bool(earliest and earliest > cutoff and rec["complete"])
+    out = {"sym": sym, "range": rng, "available": bool(pts), "points": pts, "from": pts[0][0] if pts else None, "to": pts[-1][0] if pts else None,
+           "earliest": earliest, "truncated": truncated}
+    if truncated:
+        out["note"] = f"NSE’s history starts on {earliest}; showing all of it."
+    if not pts:
+        out["reason"] = "no price history returned for this symbol"
     return out

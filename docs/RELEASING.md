@@ -25,8 +25,8 @@ against the Python engine's output (`android.yml`). Pull requests run tests and 
 # 1. bump versions (mobile/package.json is the Android version): pyproject.toml + src/marketlens/__init__.py (desktop), mobile/package.json (Android), update docs
 #    bundled stock list changed? run mobile/scripts/gen-sectors.py (a test fails if the phone's copy differs); apps also refresh it weekly by themselves
 # 2. make sure main is green (Actions tab), then:
-git tag v0.4.0        && git push origin v0.4.0          # container image :0.4.0 and :0.4
-git tag mobile-v0.7.0 && git push origin mobile-v0.7.0   # Android APK as a GitHub Release
+git tag v0.5.0        && git push origin v0.5.0          # container image :0.5.0 and :0.5
+git tag mobile-v0.8.0 && git push origin mobile-v0.8.0   # Android APK as a GitHub Release
 ```
 The Android version code is the workflow run number, so each build can update the previous one if signed with the same key.
 
@@ -43,6 +43,14 @@ These are checked by tests (`mobile/tests/upgrade.test.mjs`, the Python migratio
 - Green/red: a CSS class on a cell is not proof the cell is coloured (a more specific rule can win). Check the *computed* colour of every
   `.up`/`.down` element on Home, Markets, Screener, Option chain and Updates, in light and dark mode. `tests/test_design.py` guards the rule.
 - Open Markets and Home at phone width: stock cells show only the symbol, tables do not wrap and scroll sideways inside their box.
+
+## Changing the interface
+The interface is plain ES modules plus a small generated stylesheet. After adding or changing Tailwind utility classes in `static/js/*.js` or the icon list in
+`ui/gen-icons.mjs`, regenerate and commit the output (it is checked in so that installing never needs Node):
+```bash
+cd ui && npm ci && npm run build      # writes static/css/tailwind.css and static/js/icons.js
+```
+CI runs the same build and fails if the committed files differ. Then rebuild the phone bundle with `node mobile/scripts/build-www.mjs`.
 
 ## Checking a build
 - **Actions tab**: both workflows should be green; the APK job prints the file's size, checksum and permissions

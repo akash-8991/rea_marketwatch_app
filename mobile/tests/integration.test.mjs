@@ -53,7 +53,7 @@ function fakeNet({ flaky = true, blockWith = 0 } = {}) {
 }
 
 const NOFILE = { fetchLatest: async () => null };
-const make = (net, extra = {}) => createEngine({ storage: new MemoryStorage(), fetchFn: net.fetchFn, optionSource: NOFILE, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, refreshList: false, nseDelayMs: 0, feedDelayMs: 0, ...extra } });
+const make = (net, extra = {}) => createEngine({ now: () => Date.parse('2026-10-24T12:00:00Z'), storage: new MemoryStorage(), fetchFn: net.fetchFn, optionSource: NOFILE, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, refreshList: false, nseDelayMs: 0, feedDelayMs: 0, ...extra } });
 const get = (e, p, token) => e.handle('GET', p, { token });
 const post = (e, p, body, token, headers = H) => e.handle('POST', p, { token, headers, body: typeof body === 'string' ? body : JSON.stringify(body) });
 const ACCT = { name: 'Asha Rao', email: 'asha@example.com', dob: '1990-04-02', userId: 'asha.rao', password: 'tulip-orbit-77x' };
@@ -130,7 +130,7 @@ test('bootstrap through a flaky MCP server (half the calls 404), then extras and
 
 test('NSE 403 opens the circuit breaker: later calls make no network request, saved snapshot is served as stale', async () => {
   const live = fakeNet(), storage = new MemoryStorage();
-  const mk = (net) => createEngine({ storage, fetchFn: net.fetchFn, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, refreshList: false, nseDelayMs: 0, feedDelayMs: 0 } });
+  const mk = (net) => createEngine({ now: () => Date.parse('2026-10-24T12:00:00Z'), storage, fetchFn: net.fetchFn, settings: { cmUrl: CM, bhavcopyUrl: BH, pbkdf2Iterations: 1000, universeSize: 3, refreshList: false, nseDelayMs: 0, feedDelayMs: 0 } });
   let e = mk(live);
   const t = await signedIn(e);
   assert.equal((await get(e, '/api/bootstrap', t)).body.stale, false);
@@ -171,7 +171,7 @@ test('news: India/global split with sentiment, per-stock news, DOCTYPE feed reje
   await get(e, '/api/bootstrap', t);
   const sn = (await get(e, '/api/news/stock/TCS', t)).body;
   assert.equal(sn.sentiment.n >= 1, true);
-  const evil = createEngine({ storage: new MemoryStorage(), settings: { pbkdf2Iterations: 1000, requireLogin: false, feedDelayMs: 0 },
+  const evil = createEngine({ now: () => Date.parse('2026-10-24T12:00:00Z'), storage: new MemoryStorage(), settings: { pbkdf2Iterations: 1000, requireLogin: false, feedDelayMs: 0 },
     fetchFn: async () => new Response('<!DOCTYPE x [<!ENTITY a "bbbb">]><rss><channel><item><title>x</title><link>https://a.b</link></item></channel></rss>') });
   assert.equal((await evil.handle('GET', '/api/news/india')).status, 502);
 });
@@ -229,7 +229,7 @@ test('sector classification follows the current list even for data saved by an o
   const storage = new MemoryStorage();
   await storage.set('snap:bootstrap', { at: Date.now(), val: { asOf: '2026-10-23', fetchedAt: '2026-10-23T10:00:00', indices: [], valuation: [], sectorIndices: [], mood: {}, breadth: {},
     stocks: [{ sym: 'TCS', sector: 'IT', price: 100, prev: 99 }, { sym: 'RELIANCE', sector: 'Energy', price: 100, prev: 99 }, { sym: 'NOTINLIST', sector: 'IT', price: 5, prev: 5 }] } });
-  const e = createEngine({ storage, fetchFn: async () => new Response('', { status: 500 }), optionSource: NOFILE, settings: { requireLogin: false, offline: true, pbkdf2Iterations: 1000 } });
+  const e = createEngine({ now: () => Date.parse('2026-10-24T12:00:00Z'), storage, fetchFn: async () => new Response('', { status: 500 }), optionSource: NOFILE, settings: { requireLogin: false, offline: true, pbkdf2Iterations: 1000 } });
   const s = (await e.handle('GET', '/api/bootstrap')).body.stocks;
   assert.deepEqual(s.map((x) => x.sector), ['Information Technology', 'Oil Gas & Consumable Fuels', 'Other']);
 });

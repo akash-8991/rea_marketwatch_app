@@ -80,7 +80,7 @@ function nseFor(members) {
   };
   return calls;
 }
-const eng = (srv, extra = {}) => createEngine({ storage: extra.storage || new MemoryStorage(), fetchFn: srv.fetch, optionSource: { fetchLatest: async () => null },
+const eng = (srv, extra = {}) => createEngine({ now: () => Date.parse('2026-10-24T12:00:00Z'), storage: extra.storage || new MemoryStorage(), fetchFn: srv.fetch, optionSource: { fetchLatest: async () => null },
   settings: { cmUrl: MCP, bhavcopyUrl: MCP, requireLogin: false, refreshList: false, nseDelayMs: 0, feedDelayMs: 0, nseTimeoutMs: 200 } });
 const get = (e, p) => e.handle('GET', p).then((r) => r.body);
 
@@ -102,7 +102,7 @@ test('peers: same industry, ranked by last session turnover, live prices for the
 test('peers when NSE is unreachable: names and saved prices, flagged stale, no error', async () => {
   const storage = new MemoryStorage();
   await storage.set('snap:bootstrap', { at: Date.now(), val: { asOf: 'x', stocks: [{ sym: 'TCS', price: 2500, prev: 2400, volume: 5, valueCr: 9, ts: '2026-10-23' }], indices: [], valuation: [], mood: {}, breadth: {}, sectorIndices: [] } });
-  const e = createEngine({ storage, fetchFn: async () => new Response('', { status: 500 }), optionSource: { fetchLatest: async () => null }, settings: { requireLogin: false, refreshList: false, nseDelayMs: 0, nseTimeoutMs: 100 } });
+  const e = createEngine({ now: () => Date.parse('2026-10-24T12:00:00Z'), storage, fetchFn: async () => new Response('', { status: 500 }), optionSource: { fetchLatest: async () => null }, settings: { requireLogin: false, refreshList: false, nseDelayMs: 0, nseTimeoutMs: 100 } });
   const p = await get(e, '/api/peers/INFY');
   assert.equal(p.stale, true); assert.equal(p.peers.length, 10);
   assert.ok(p.peers.every((x) => x.name));

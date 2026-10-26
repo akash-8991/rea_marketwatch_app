@@ -88,3 +88,22 @@ flowchart LR
 | Market clock as pure functions (`marketclock.js`) | "live or last update" is decided in one place, tested at the edges; holidays are inferred from quote dates because the app has no exchange calendar |
 | Live prices as an overlay on the end-of-day base | the bulk call paints the page at once; per-stock live quotes replace values as they arrive; a refresh never replaces newer data with older |
 | Freshness policy in one class (`OptionFeed`) | single-flight, 20-minute cooldown, always falls back to saved data; the UI never waits on a retry loop |
+
+## Interface architecture (static/)
+```mermaid
+flowchart LR
+  subgraph Eager["first paint (about 41 KB compressed)"]
+    A[index.html + style.css + tailwind.css] --> B[data.js] --> C[app.js, lib.js, ui.js, icons.js]
+  end
+  subgraph Lazy["loaded on first use"]
+    P[palette.js] ; D[dashboard.js] ; H[chart.js] ; Pp[paper-view.js] --> S[strategies.js, indicators.js, paper.js] ; Sc[screener.js]
+  end
+  C -. "Ctrl K" .-> P
+  C -. "#/watchlist" .-> D
+  C -. "#/quote" .-> H
+  C -. "#/paper" .-> Pp
+  C --> API["/api/*"]
+```
+Request path for a price: user action → state (the UI already holds the last values) → client cache (palette results 10 min, chart ranges 5 min, last watchlist prices
+saved at once) → API → engine cache (30 s) → single-flight → NSE lane (warm session) → normalised JSON → patch of the one changed row. Background work (extras, live
+overlay, sentiment) never blocks a reply.

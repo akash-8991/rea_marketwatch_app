@@ -76,16 +76,18 @@ export class NseClient {
    * backend that does not know the session (measured: about 60% of calls), and a retry on the SAME session usually lands on the
    * right one, which costs 1 request instead of the 3 a fresh session costs. After MISS_LIMIT 404s in a row the session is dropped. */
   async rpc(url, method, params = {}, attempts = 14) {
-    let last = null, netFails = 0;
+    let last = null, netFails = 0, hardFails = 0, backoff = 0;
     for (let i = 0; i < attempts; i++) {
       if (this.offline) throw new UpstreamBlocked('offline mode (no NSE requests are made)');
       if (this.now() < this.breaker.until) throw new UpstreamBlocked(this.breaker.reason);
+      if (backoff) { await sleep(backoff); backoff = 0; }
       const lane = await this.pool.acquire();
+      let paced = false;
       try {
         const sid = lane.sessions[url] || (lane.sessions[url] = await this.initSession(url));
         const [, raw] = await this.post(url, { jsonrpc: '2.0', id: 2, method, params }, sid);
         lane.misses[url] = 0;
-        if (this.delayMs) await sleep(this.delayMs);
+        paced = true;   // the politeness gap is applied when the lane is released, not before the caller gets its answer
         const msg = parseBody(raw);
         if (msg.error) throw new Error(`${method}: ${String(JSON.stringify(msg.error)).slice(0, 160)}`);
         return msg.result || {};
@@ -98,15 +100,19 @@ export class NseClient {
           if (lane.misses[url] >= MISS_LIMIT || !lane.sessions[url]) { delete lane.sessions[url]; lane.misses[url] = 0; }
         } else if (e instanceof HttpError || e.message === 'connection error' || e instanceof SyntaxError) {
           delete lane.sessions[url];   // unknown state: start clean next time
+          if (hardFails >= 5) throw new Error(`${method} failed after ${hardFails + 1} errors: ${last && last.message}`);   // NSE is really failing: report it instead of hammering it
+          backoff = Math.min(60 * 2 ** hardFails++, 1000);   // a real error (not a routine misroute): wait longer each time before trying again
           if (e.message === 'connection error' && ++netFails >= 3) throw new Error(`${method} failed: no answer from NSE (${this.timeoutMs / 1000} s timeout, 3 tries)`);
         } else throw e;
-        if (this.delayMs) await sleep(Math.min(this.delayMs, 60));
-      } finally { this.pool.release(lane); }
+      } finally {
+        // Pacing (at most one request per lane per delayMs) keeps NSE's edge happy but must not add to latency: hold the lane, not the reply.
+        if (paced && this.delayMs) setTimeout(() => this.pool.release(lane), this.delayMs); else this.pool.release(lane);
+      }
     }
     throw new Error(`${method} failed: ${last}`);
   }
 
-  async mcp(url, tool, args = {}, attempts = 8) {
+  async mcp(url, tool, args = {}, attempts = 14) {
     const res = await this.rpc(url, 'tools/call', { name: tool, arguments: args }, attempts);
     const text = (res.content || []).map((c) => c.text || '').join('');
     if (res.isError) throw new Error(`${tool}: ${text.slice(0, 160)}`);
