@@ -1,2 +1,2 @@
-89a4ceb130e9ef0e46f8c42b934e1fbcb1d5966f47f5d12f97c7fce1fc56bb7c  marketlens-0.5.0-py3-none-any.whl
-a7312deffe18e3ad55ce93e3c46997fc5fe4dcb6a3433034fbad5f65a7c02b5a  marketlens-0.5.0.tar.gz
+aca214538124c974e5af7b8f7f7c4ca5aff204db9fea5c01720f9b6157d9ccab  marketlens-0.5.1-py3-none-any.whl
+a192ddc1637e0f99d17ff203f35857bb25e0d3c4c2aa1efb30697480f28430b0  marketlens-0.5.1.tar.gz

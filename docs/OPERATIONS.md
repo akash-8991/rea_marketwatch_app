@@ -96,6 +96,7 @@ One JSON line per API request on stderr: `ts`, `level`, `requestId`, `method`, `
 ## Runbook
 | Symptom | Likely cause | Action |
 |---|---|---|
+| Home shows an older date (for example the previous session) | the saved copy is shown while the refresh runs (a few seconds on the phone, about 15 s on the desktop); if it stays old, the banner says why | wait, then check the banner: *Stale* means NSE could not be reached or paused us |
 | Banner says **Stale** and `/api/metrics` → `upstream.nseRetryInSeconds` > 0 | NSE returned 401/403/429; breaker is open (persisted in `breaker.json`) | Wait for the window. Do not restart repeatedly or add retries. Reduce `--option-interval` traffic if you added an endpoint. |
 | Banner says **Disconnected** | the browser lost the local server | Restart `marketlens`; the page retries with backoff by itself. |
 | Many `429` | a script or another tab is hammering the API | Check `route` in the log; raise nothing, fix the caller. |
@@ -120,5 +121,6 @@ has no dependencies and bundles no NSE data.
 | Circuit breaker on 401/403/429 | 15 min, saved on disk | an NSE block is respected across restarts |
 | Quote deadline | 6 s (`QUOTE_DEADLINE`, `quoteDeadlineMs`) | a stuck NSE call cannot hold a page; the saved copy is shown as `stale` and the call finishes in the background |
 | Search deadline | 450 ms | typing stays smooth when NSE's symbol search is slow |
+| Saved data first (home data) | the saved copy answers at once and is refreshed in the background; the page polls while `refreshing` is true | a first load after the app was closed never waits for NSE (it used to wait about 13 s, longer than the page's 10 s timeout) |
 | Request coalescing | one in-flight request per key | a burst of identical requests costs one NSE call |
 | Cache TTLs | quotes 30 s open / 15 min closed; history 12 h; peers ranking 30 min | NSE updates about once a minute; asking more often returns the same numbers |

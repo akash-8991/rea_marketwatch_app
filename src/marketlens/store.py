@@ -30,6 +30,13 @@ def cached(key, ttl, fn):
         return val
 
 
+def peek(key):
+    """The cached value if it is still fresh, else None. Never calls the loader."""
+    with _glock:
+        hit = _cache.get(key)
+        return hit[1] if hit and hit[0] > time.time() else None
+
+
 def forget(key):
     """Drop one cached value (used by 'refresh now', which still goes through the single-flight lock)."""
     with _glock:

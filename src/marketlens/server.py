@@ -49,15 +49,39 @@ _static_cache = {}
 
 
 # ---------- payloads ----------
+_boot = {"thread": None, "error": None, "failed_at": 0.0}
+BOOT_RETRY = 60.0
+
+
+def _refresh_bootstrap():
+    """One background refresh at a time; a failure is remembered so the next answer can say why the data is old."""
+    def run():
+        try:
+            store.cached("bootstrap", 60, market.build_bootstrap)
+            _boot["error"] = None
+        except Exception as e:
+            _boot["error"], _boot["failed_at"] = str(e)[:200], time.time()
+        finally:
+            _boot["thread"] = None
+    if _boot["thread"] is None and time.time() - _boot["failed_at"] >= BOOT_RETRY:
+        _boot["thread"] = threading.Thread(target=run, daemon=True, name="bootstrap-refresh")
+        _boot["thread"].start()
+
+
 def bootstrap_payload():
-    """Live data when NSE answers; otherwise the last saved snapshot, flagged stale."""
-    try:
-        boot = dict(store.cached("bootstrap", 60, market.build_bootstrap), stale=False)
-    except Exception as e:
-        snap = store.disk_get("bootstrap")
-        if snap is None:
-            raise
-        boot = dict(snap, stale=True, staleReason=str(e)[:200], retryInSeconds=nse.retry_in_seconds())
+    """Saved data first: if anything is saved it is answered at once and refreshed in the background (the page polls again while `refreshing`), so a first load after
+    the app was closed never waits for NSE. Only a first run with nothing saved waits. Offline, blocked or failing NSE: the saved copy, flagged stale, with the reason."""
+    fresh, snap = store.peek("bootstrap"), store.disk_get("bootstrap")
+    if fresh is not None:
+        boot = dict(fresh, stale=False, refreshing=False)
+    elif snap is None:
+        boot = dict(store.cached("bootstrap", 60, market.build_bootstrap), stale=False, refreshing=False)   # nothing to show yet: wait for the first data
+    elif not nse.available():
+        boot = dict(snap, stale=True, refreshing=False, staleReason="offline mode (no NSE requests are made)" if settings.offline else nse._breaker.get("reason", "NSE paused"), retryInSeconds=nse.retry_in_seconds())
+    else:
+        _refresh_bootstrap()
+        failed = _boot["thread"] is None and _boot["error"] is not None
+        boot = dict(snap, stale=failed, refreshing=_boot["thread"] is not None, **({"staleReason": _boot["error"], "retryInSeconds": nse.retry_in_seconds()} if failed else {}))
     boot["offline"] = settings.offline
     newest = max((x.get("ts") or "" for x in boot.get("stocks", [])), default="")
     boot["market"] = marketclock.market_state(time.time(), received=len(boot.get("stocks", [])), newest=newest)
