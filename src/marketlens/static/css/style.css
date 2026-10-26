@@ -356,3 +356,14 @@ dialog { max-width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); overflo
 
 /* narrower than a small phone (folded devices): the status pill gives way, the banner under the bar still says the same */
 @media (max-width: 340px) { .pill { display: none; } }
+
+/* strategy pages: smaller type, and long names and explanations wrap inside their cell instead of stretching the table or the page */
+.strat { font-size: .8125rem; line-height: 1.5; }
+.strat .text-sm, .strat p, .strat label { font-size: .8125rem; }
+.strat .text-xs { font-size: .75rem; }
+.strat .tbl th, .strat .tbl td { font-size: .78125rem; white-space: normal; overflow-wrap: break-word; vertical-align: top; }
+.strat .tbl th { font-size: .6875rem; }
+.strat .tbl td:first-child { min-width: 8.5rem; }
+.strat .tbl td .muted { display: inline-block; max-width: 28rem; }
+.strat .badge, .strat [class*="badge"] { white-space: nowrap; }
+.strat .tbl td.num, .strat .tbl th.num { white-space: nowrap; }

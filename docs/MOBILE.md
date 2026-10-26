@@ -76,7 +76,7 @@ live call), made two at a time, so they arrive over a few seconds with the most-
 
 ## 2e. Watchlist, chart and paper trading
 The phone app has the same interface as the desktop: left menu that slides in, command palette (tap the search box), the interactive Watchlist (saved prices appear at
-once, fresh ones fill in within seconds), the stock page with 1W to 10Y charts (NSE history starts 1 Jan 2024), and Paper trading with 37 stock and technical-analysis strategies and 41 option strategies (built from the real option chain, with payoff charts).
+once, fresh ones fill in within seconds), the stock page with 1D to 1Y charts (NSE history starts 1 Jan 2024), and Paper trading with 37 stock and technical-analysis strategies and 41 option strategies (built from the real option chain, with payoff charts).
 Details: [UI.md](UI.md). Speed numbers and method: [PERFORMANCE.md](PERFORMANCE.md).
 
 ## 3. What is different from the desktop app

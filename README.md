@@ -27,7 +27,7 @@ Python standard library.
 |---|---|---|
 | **An Android phone** | On the phone, tap **[Download MarketLens for Android](https://github.com/akash-8991/rea_marketwatch_app/raw/main/downloads/MarketLens-android.apk)** (a ready-built `.apk`, nothing to run), open the downloaded file, allow the install, create an account. Standalone: no computer needed. Details: [docs/MOBILE.md](docs/MOBILE.md). | 2 min |
 | **Docker** | `docker run -d --name marketlens -p 127.0.0.1:8080:8080 -v marketlens-data:/data ghcr.io/akash-8991/rea_marketwatch_app:latest`, then open <http://127.0.0.1:8080>. Or use [docker-compose.yml](docker-compose.yml). | 1 min |
-| **Python 3.9+** | `pip install marketlens-0.7.0-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
+| **Python 3.9+** | `pip install marketlens-0.7.1-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
 | **An iPhone** | Not available yet; needs a Mac with Xcode to build. See [docs/MOBILE.md](docs/MOBILE.md), section 7. | |
 
 The first screen asks you to create an account; after that you sign in with your user ID and password. You then stay signed in
@@ -35,7 +35,7 @@ The first screen asks you to create an account; after that you sign in with your
 stored on your own device (phone storage, the container's `/data` volume, or your user data folder).
 
 Updating keeps your user ID, password and sign-in (install the new version over the old one; do not uninstall).
-**What the interface offers (desktop, container and phone):** a left navigation rail (a slide-in menu on phones) and a command palette (Ctrl or Cmd + K, or `/`) that searches by symbol or company name with recent searches and full keyboard control; an interactive **Watchlist** (add and remove with undo, sort, filter, refresh one or all, auto-refresh from 1 to 60 seconds that pauses when the tab is hidden, status badges that never rely on colour alone); a **stock page** that shows the price first and then a chart with 1D, 1W, 1M, 3M, 6M, 1Y, 5Y and 10Y ranges (NSE keeps daily history from 1 January 2024 and the chart says so; there is no intraday data) with a keyboard-readable crosshair; and **Paper trading**: a pretend ₹10,00,000 account at real NSE prices, an order ticket, and a stock-strategy lab with 37 trend, momentum, mean-reversion, breakout, risk-rule, SIP, calendar and long-short strategies run over real history against buy and hold, and an option-strategy lab with 41 strategies (spreads, straddles and strangles, condors and butterflies, covered calls, collars, ratio spreads, calendars and more) built from the real option chain with payoff charts, break-evens, Greeks and a paper option book over a stock's real history with fees, a comparison against buy and hold, and an explanation of when each works and fails. Details: [docs/UI.md](docs/UI.md). Measured speed and the method: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
+**What the interface offers (desktop, container and phone):** a left navigation rail (a slide-in menu on phones) and a command palette (Ctrl or Cmd + K, or `/`) that searches by symbol or company name with recent searches and full keyboard control; an interactive **Watchlist** (add and remove with undo, sort, filter, refresh one or all, auto-refresh from 1 to 60 seconds that pauses when the tab is hidden, status badges that never rely on colour alone); a **stock page** that shows the price first and then a chart with 1D, 1W, 1M, 3M, 6M and 1Y ranges (NSE keeps daily history from 1 January 2024 and the chart says so; there is no intraday data) with a keyboard-readable crosshair; and **Paper trading**: a pretend ₹10,00,000 account at real NSE prices, an order ticket, and a stock-strategy lab with 37 trend, momentum, mean-reversion, breakout, risk-rule, SIP, calendar and long-short strategies run over real history against buy and hold, and an option-strategy lab with 41 strategies (spreads, straddles and strangles, condors and butterflies, covered calls, collars, ratio spreads, calendars and more) built from the real option chain with payoff charts, break-evens, Greeks and a paper option book over a stock's real history with fees, a comparison against buy and hold, and an explanation of when each works and fails. Details: [docs/UI.md](docs/UI.md). Measured speed and the method: [docs/PERFORMANCE.md](docs/PERFORMANCE.md).
 
 Everywhere: increases are green and decreases red, table text never wraps (tables scroll sideways), and news and updates use a medium text size.
 
@@ -55,7 +55,7 @@ happen on GitHub), [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/ARCHITECTURE.
 Requires Python 3.9 or newer (tested on 3.12, 3.13 and 3.14; 3.9-3.11 are untested).
 
 ```bash
-pip install marketlens-0.7.0-py3-none-any.whl     # or: pip install .  from a source checkout
+pip install marketlens-0.7.1-py3-none-any.whl     # or: pip install .  from a source checkout
 marketlens                                         # opens http://127.0.0.1:8080/
 marketlens-options-mcp --data-dir <data folder>    # optional: MCP (stdio) server over the option-chain database
 ```

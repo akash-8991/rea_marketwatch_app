@@ -6,7 +6,7 @@ Nothing is estimated except where the word "estimate" appears.
 
 ## 1. Executive summary
 * The interface was rebuilt as a shadcn/ui-style design system with Tailwind utilities and Lucide icons, an interactive watchlist, a command palette, a price-first stock page
-  with 1D to 10Y chart ranges, toasts and clear data states, and a new **Paper trading** page (see [UI.md](UI.md)). It stays a no-build ES-module app: React and the shadcn/ui
+  with 1D to 1Y chart ranges, toasts and clear data states, and a new **Paper trading** page (see [UI.md](UI.md)). It stays a no-build ES-module app: React and the shadcn/ui
   package were **not** adopted (reasoning in [THIRD_PARTY.md](THIRD_PARTY.md)).
 * Cached and saved-data reads were already fast (median 0.2 to 1.5 ms on the desktop server); the real latency is NSE's, so work went into **how often and how many times NSE is
   asked**: a pacing delay that sat in every reply was moved off the response path, a lean one-call quote now shows the price while the heavy page loads, a batch endpoint replaced

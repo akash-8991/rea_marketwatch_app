@@ -5,7 +5,7 @@ import { $, $$, esc, money, signed, cls, api, fmtDate, icon, store } from './lib
 import { decimate, stats } from './pure.js';
 import { tabs, bindTabs, skeletonBlock, alert, buttonClass } from './ui.js';
 
-export const RANGES = [['1D', '1D'], ['1W', '1W'], ['1M', '1M'], ['3M', '3M'], ['6M', '6M'], ['1Y', '1Y'], ['5Y', '5Y'], ['10Y', '10Y']];
+export const RANGES = [['1D', '1D'], ['1W', '1W'], ['1M', '1M'], ['3M', '3M'], ['6M', '6M'], ['1Y', '1Y']];
 const CACHE_MS = 5 * 60 * 1000;
 const cache = new Map(), inflight = new Map();
 
@@ -20,7 +20,7 @@ function getHistory(sym, range, signal) {
 }
 
 export function mount(host, { sym, onRange = () => {} }) {
-  let range = store.get('ml.range', '3M'), ctl = null, seq = 0, data = null, ro = null, active = -1;
+  let range = RANGES.some((x) => x[0] === store.get('ml.range', '3M')) ? store.get('ml.range', '3M') : '3M', ctl = null, seq = 0, data = null, ro = null, active = -1;
   host.innerHTML = `<section class="card" aria-label="Price chart"><div class="flex flex-wrap items-center justify-between gap-2">${tabs(RANGES, range, { id: 'range-tabs', label: 'Chart range' })}<p id="chart-sum" class="m-0 text-sm text-muted-foreground"></p></div>
     <div id="chart-body" class="mt-3" style="min-height:200px"></div><p id="chart-note" class="m-0 mt-2 text-xs text-muted-foreground"></p></section>`;
   const body = $('#chart-body', host), note = $('#chart-note', host), sum = $('#chart-sum', host);
@@ -28,7 +28,7 @@ export function mount(host, { sym, onRange = () => {} }) {
   async function load(r = range) {
     ctl?.abort(); ctl = new AbortController(); const mine = ++seq;
     body.innerHTML = `<div role="status" aria-label="Loading chart" class="grid gap-2">${skeletonBlock('280px')}</div>`; note.textContent = ''; sum.textContent = '';
-    if (['5Y', '10Y'].includes(r)) note.textContent = 'Long ranges load several pieces of history from NSE the first time; later visits are instant.';
+    if (r === '1Y') note.textContent = 'A year of history loads in a few pieces from NSE the first time; later visits are instant.';
     try {
       const d = await getHistory(sym, r, ctl.signal);
       if (mine !== seq) return;

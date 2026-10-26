@@ -121,6 +121,14 @@ class StylesheetRules(unittest.TestCase):
     def test_index_tiles_scroll_sideways_instead_of_wrapping(self):
         self.assertRegex(CSS, r"\.tick \{[^}]*flex:\s*none[^}]*white-space:\s*nowrap")
 
+    def test_strategy_pages_use_a_smaller_font_and_wrap_text(self):
+        self.assertRegex(CSS, r"\.strat \{[^}]*font-size:\s*\.8125rem")
+        self.assertRegex(CSS, r"\.strat \.tbl th, \.strat \.tbl td \{[^}]*white-space:\s*normal")
+
+    def test_stock_chart_ranges_are_1d_to_1y(self):
+        js = (STATIC / "js" / "chart.js").read_text()
+        self.assertIn("export const RANGES = [['1D', '1D'], ['1W', '1W'], ['1M', '1M'], ['3M', '3M'], ['6M', '6M'], ['1Y', '1Y']];", js)
+
 
 if __name__ == "__main__":
     unittest.main()

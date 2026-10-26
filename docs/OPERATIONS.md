@@ -18,7 +18,7 @@ Environment variables: `NSE_CM_MCP_URL`, `NSE_BHAVCOPY_MCP_URL`, `NSE_FO_MCP_URL
 | `GET /api/audit?limit=N` | Recent audit entries and whether the hash chain verifies. |
 | `GET /api/quote/<SYMBOL>[?fresh=1]` | lean quote: price, change, last-trade time and age, company, a status (`live`, `delayed`, `closed`, `stale`, `unavailable`). One NSE call, shared by simultaneous callers, cached 30 s while the market trades and 15 min otherwise; `fresh=1` bypasses the cache at most once per symbol per 5 s; answers from the saved copy (`stale`) if NSE has not replied in 6 s |
 | `GET /api/quotes?symbols=A,B,…` | the same for up to 50 symbols at once (invalid and duplicate symbols handled), order kept |
-| `GET /api/history/<SYMBOL>?range=1W\|1M\|3M\|6M\|1Y\|5Y\|10Y` | daily closes `[date, close, volume]`; NSE's history starts 1 Jan 2024 so long ranges are truncated and say so; fetched in 3-month pieces and saved for 12 h; `1D` answers `available:false` with the reason (no intraday data exists) |
+| `GET /api/history/<SYMBOL>?range=1W\|1M\|3M\|6M\|1Y\|5Y\|10Y` | daily closes `[date, close, volume]` (the chart offers up to 1Y; 5Y and 10Y serve the strategy lab); NSE's history starts 1 Jan 2024 so long ranges are truncated and say so; fetched in 3-month pieces and saved for 12 h; `1D` answers `available:false` with the reason (no intraday data exists) |
 | `GET /api/peers/<SYMBOL>` | peer comparison for one stock (same industry, most traded); about 11 NSE calls, cached a minute |
 | `GET /api/config` | Version, flags, the rating thresholds, the active rate limits. |
 

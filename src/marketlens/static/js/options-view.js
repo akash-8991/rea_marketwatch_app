@@ -84,7 +84,7 @@ export function paintOptions(body, { isAlive }) {
     const { st, an } = S, T = OPTION_STRATEGIES[st.key], big = (v, neg) => (Number.isFinite(v) ? sRupee(v) : neg ? 'Unlimited loss' : 'Unlimited');
     const src = S.chain.tradeDate ? `NSE end-of-day file, trading day ${esc(fmtDate(S.chain.tradeDate))}` : 'the saved chain';
     const gw = an.greeks;
-    box.innerHTML = `<div class="grid gap-3"><section class="card" aria-live="polite"><div class="flex flex-wrap items-center justify-between gap-2"><h2 class="m-0">${esc(T.name)} on ${esc(L.sym)}</h2><p class="m-0 flex flex-wrap gap-2 text-xs text-muted-foreground">${badge(T.outlook)}${badge(T.group, { variant: 'outline' })}</p></div>
+    box.innerHTML = `<div class="grid gap-3"><section class="card strat" aria-live="polite"><div class="flex flex-wrap items-center justify-between gap-2"><h2 class="m-0">${esc(T.name)} on ${esc(L.sym)}</h2><p class="m-0 flex flex-wrap gap-2 text-xs text-muted-foreground">${badge(T.outlook)}${badge(T.group, { variant: 'outline' })}</p></div>
       <p class="mt-2 text-sm">${esc(T.idea)}</p><p class="m-0 text-sm"><b>Use when:</b> ${esc(T.whenToUse)}</p>
       <p class="m-0 mt-1 text-xs text-muted-foreground">${esc(L.sym)} at ${money(S.st.spot)} · expiry ${esc(S.chain.expiry)} (${Math.max(0, an.daysToExpiry).toFixed(0)} days) · premiums from ${src}${S.st.notes.length ? ` · ${esc(S.st.notes.join(' '))}` : ''}</p>
       ${legsTable(st)}
@@ -116,7 +116,7 @@ export function paintOptions(body, { isAlive }) {
 
   function compareCard() {
     const rows = S.comp || [];
-    return `<section class="card"><h2 class="m-0">Every strategy on the same chain</h2><p class="m-0 mt-1 text-xs text-muted-foreground">${esc(L.sym)} · expiry ${esc(S.chain ? S.chain.expiry : '')} · ${L.lots} lot${L.lots > 1 ? 's' : ''} of ${L.lot || defaultLot(L.sym)} · strike gap ${L.width}. Select a row to open it.</p>
+    return `<section class="card strat"><h2 class="m-0">Every strategy on the same chain</h2><p class="m-0 mt-1 text-xs text-muted-foreground">${esc(L.sym)} · expiry ${esc(S.chain ? S.chain.expiry : '')} · ${L.lots} lot${L.lots > 1 ? 's' : ''} of ${L.lot || defaultLot(L.sym)} · strike gap ${L.width}. Select a row to open it.</p>
       <div class="scroll mt-2"><table class="tbl"><caption class="sr-only">All option strategies compared</caption><thead><tr><th>Strategy</th><th>View</th><th class="num">Debit (−) / credit (+)</th><th class="num">Max profit</th><th class="num">Max loss</th><th class="num">Chance of profit</th></tr></thead><tbody>
       ${rows.map((r) => `<tr data-open="${r.key}" tabindex="0" style="cursor:pointer" class="${S.st && r.key === S.st.key ? 'me' : ''}"><td><b>${esc(r.name)}</b></td><td>${esc(r.outlook)}</td><td class="num ${tone(-r.net)}">${sRupee(-r.net)}</td><td class="num up">${Number.isFinite(r.maxProfit) ? sRupee(r.maxProfit) : 'Unlimited'}</td><td class="num down">${Number.isFinite(r.maxLoss) ? sRupee(r.maxLoss) : 'Unlimited'}</td><td class="num">${r.pop == null ? '—' : `${r.pop.toFixed(0)}%`}</td></tr>`).join('')}</tbody></table></div></section>`;
   }

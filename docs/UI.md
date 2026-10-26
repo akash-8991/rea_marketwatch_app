@@ -69,7 +69,7 @@ out, so a plain 50-row list is left as is.
 ## Stock page
 The price header comes from one lean request (`/api/quote/<symbol>`): company, industry, exchange, price, change in ₹ and %, last-trade time and its age, source, status
 badge, refresh and watchlist buttons. The chart and the detail tabs load independently below it. Chart ranges: 1D (honestly unavailable: NSE's servers have daily data
-only), 1W, 1M, 3M, 6M, 1Y, 5Y, 10Y. NSE's history starts on 1 January 2024, so 5Y and 10Y show everything available and say so. Each range is fetched once, cached, and
+only), 1W, 1M, 3M, 6M, 1Y (the API still accepts 5Y and 10Y, which the strategy lab uses for all of NSE's history; a saved 5Y or 10Y choice from an older version falls back to 3M). NSE's history starts on 1 January 2024. Each range is fetched once, cached, and
 a request that is no longer wanted (you switched range) is cancelled.
 
 ## Paper trading
@@ -83,6 +83,8 @@ Four tabs.
   paper trades, and a table of every strategy on the same data. Each has a plain-language page: the idea, when it buys and sells, when it works, when it struggles, what to learn.
   A signal is read at one close and acts at the next; the strategies use closing prices only (highs and lows are not in the saved history), so oscillators use the closing range.
 * **Option strategies**: 41 strategies built from the real option chain (see below).
+
+Strategy pages (the description, the legs and the comparison tables) use a smaller type size, and long strategy names and explanations wrap inside their cell instead of widening the table; figures never wrap.
 
 ### Stock and technical-analysis strategies
 | Group | Strategies |
