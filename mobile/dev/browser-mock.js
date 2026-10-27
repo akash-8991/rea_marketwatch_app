@@ -15,8 +15,8 @@
       window.__nseCalls.quote++; const k = h(a.symbol), drift = Math.sin(Date.now() / 4000 + k) * 6 + Math.sin(Date.now() / 900 + k) * 2;
       if (a.symbol === 'NOPE') out = { stock: null };
       else { const price = +(1000 + k % 500 + drift).toFixed(2), ch = ((k % 900) / 100 - 4.2); out = { stock: { lastTradedPrice: price, preClosePrice: +(price / (1 + ch / 100)).toFixed(2), perChange: +ch.toFixed(2), volume: 100000 + k * 37, value: +(k / 3).toFixed(1), latestTimestamp: new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 19).replace('T', ' '), series: 'EQ', fiftyTwoWeekHigh: 1500, fiftyTwoWeekLow: 900, perChange30d: 2.1, openPrice: price - 3, highPrice: price + 5, lowPrice: price - 8 } }; }
-    } else if (n === 'get_stock_history') {
-      window.__nseCalls.history++; const k = h(a.symbol), end = a.endDate ? new Date(a.endDate + 'T00:00:00Z') : new Date(Date.UTC(2026, 9, 23)); const rows = [];
+    } else if (n === 'get_stock_history' || n === 'get_index_history') {
+      window.__nseCalls.history++; const k = h(a.symbol || a.indexName), end = a.endDate ? new Date(a.endDate + 'T00:00:00Z') : new Date(Date.UTC(2026, 9, 23)); const rows = [];
       for (let i = 0; i < 63; i++) { const d = new Date(end.getTime() - (62 - i) * 1.4 * 86400000); if (d < new Date(Date.UTC(2024, 0, 1))) continue; const t = (d - Date.UTC(2024, 0, 1)) / 86400000;
         const cl = +(1000 + t * 0.35 + Math.sin(t / 9 + k) * 60 + Math.sin(t / 3) * 14).toFixed(2), op = +(cl + Math.sin(t * 1.7 + k) * 9).toFixed(2); rows.push({ date: d.toISOString().slice(0, 10), open: op, high: +(Math.max(op, cl) + 6 + Math.abs(Math.sin(t))* 5).toFixed(2), low: +(Math.min(op, cl) - 6 - Math.abs(Math.cos(t)) * 5).toFixed(2), close: cl, volume: 100000 + Math.round(Math.abs(Math.sin(t * 2.3)) * 90000) }); }
       const first = rows[0] && rows[0].date; out = { data: rows, next_end_date: first && first > '2024-01-10' ? new Date(Date.parse(first) - 86400000).toISOString().slice(0, 10) : null };

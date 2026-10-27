@@ -4,6 +4,9 @@ import { SECTOR_INDICES } from './sectors.js';
 import { inSessionHours, marketState } from './marketclock.js';
 import { Ticks } from './ticks.js';
 export const HEADLINE_INDICES = ['NIFTY 50', 'NIFTY BANK', 'NIFTY NEXT 50', 'NIFTY MIDCAP 100'];
+export const INDEX_PREFIX = 'IDX_';
+/** The symbol-shaped key the chart page uses for an index: 'NIFTY 50' -> 'IDX_NIFTY_50'. */
+export const indexKey = (name) => INDEX_PREFIX + String(name).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 export const SYMBOL_RE = /^[A-Za-z0-9&_-]{1,24}$/;
 const DIV_RE = /(?:Rs\.?|Re\.?|INR)\s*([0-9]+(?:\.[0-9]+)?)/i;
 const isoDay = (d) => d.toISOString().slice(0, 10);
@@ -334,8 +337,16 @@ export class Market {
       out.indices = HEADLINE_INDICES.filter((n) => n in by).map((n) => row(by[n], n));
       for (const [sec, ix] of SECTOR_INDICES) { const lv = by[ix.toUpperCase()]; if (lv && lv.last) out.sectorIndices.push({ sector: sec, index: lv.indexName || ix, pct: lv.percChange }); }
     } catch (e) { out.indicesError = String(e.message || e).slice(0, 120); }
-    const listed = [];
-    for (const raw of symbols.slice(0, 40)) { const sym = String(raw || '').trim().toUpperCase(); if (SYMBOL_RE.test(sym) && !listed.includes(sym)) listed.push(sym); }
+    const listed = [], wanted = [];
+    for (const raw of symbols.slice(0, 40)) { const sym = String(raw || '').trim().toUpperCase(); if (SYMBOL_RE.test(sym) && !listed.includes(sym) && !wanted.includes(sym)) (sym.startsWith(INDEX_PREFIX) ? wanted : listed).push(sym); }
+    try {   // indices on screen (the chart page) come back as quotes under their IDX_ key; the headline and sector indices are recorded for intraday charts
+      const by = await this.liveIndices(), keyed = {}; for (const [n, lv] of Object.entries(by)) keyed[indexKey(n)] = lv;
+      for (const key of wanted) { const lv = keyed[key]; if (lv && lv.last) out.quotes.push({ sym: key, price: lv.last, prev: lv.previousClose ?? null, abs: lv.change ?? null, chg: lv.percChange ?? null, open: lv.open ?? null, high: lv.high ?? null, low: lv.low ?? null, volume: null, valueCr: null, ts: lv.timeVal ?? null, ageMs: null, status: state.live ? 'live' : 'closed', hi52: null, lo52: null }); }
+      if (inSessionHours(t)) {
+        for (const n of [...HEADLINE_INDICES, ...SECTOR_INDICES.map(([, ix]) => ix)]) { const lv = by[n.toUpperCase()]; if (lv && lv.last) this.ticks.record(indexKey(n), lv.last, null, null).catch(() => {}); }
+        for (const key of wanted) { const lv = keyed[key]; if (lv && lv.last) this.ticks.record(key, lv.last, null, null).catch(() => {}); }
+      }
+    } catch (e) { /* the quotes below still answer */ }
     if (listed.length) for (const q of (await this.quotes(listed, state)).quotes) out.quotes.push(Object.fromEntries(['sym', 'price', 'prev', 'abs', 'chg', 'open', 'high', 'low', 'volume', 'valueCr', 'ts', 'ageMs', 'status', 'hi52', 'lo52'].map((k) => [k, q[k] ?? null])));
     return out;
   }
@@ -352,10 +363,16 @@ export class Market {
 
   /** Daily closes for a range. NSE returns at most three months per call and the next call needs the previous one's `next_end_date`, so chunks are
    * fetched one after another and the result saved: later ranges, and the next visit, cost nothing. */
+  /** Back from the key to NSE's index name, using the live list when available (names can hold characters a key cannot). */
+  async indexName(key) {
+    try { for (const n of Object.keys(await this.liveIndices())) if (indexKey(n) === key) return n; } catch (e) { /* fall through */ }
+    return key.slice(INDEX_PREFIX.length).replace(/_/g, ' ');
+  }
+
   async history(sym, range) {
     const days = Market.RANGE_DAYS[range];
     if (!days) return { sym, range, available: false, reason: range === '1D' ? 'NSE’s servers provide daily data only, so there is no intraday chart.' : 'unknown range' };
-    const key = 'hist:' + sym, cutoff = isoDay(new Date(this.now().getTime() - days * 86400000));
+    const isIndex = sym.startsWith(INDEX_PREFIX), key = 'hist:' + sym, cutoff = isoDay(new Date(this.now().getTime() - days * 86400000));
     let rec = await this.snaps.get(key);
     if (rec && (await this.snaps.age(key)) > 12 * 3600) rec = null;                       // older than half a day: start over
     if (rec && rec.points.length && rec.points[0].length < 6) rec = null;                 // saved by an older release without open, high and low: fetch again
@@ -364,8 +381,9 @@ export class Market {
       const points = rec ? [...rec.points] : [];
       let end = rec ? rec.next || '' : '', next = rec ? rec.next || null : null, complete = false, guard = 0;
       while (!complete && guard++ < 16 && (!points.length || points[0][0] > cutoff)) {
-        const h = await this.nse.bh('get_stock_history', { symbol: sym, months: 3, endDate: end });
-        const rows = (h.data || []).filter((r) => r.close).map((r) => [r.date, r.close, r.volume ?? null, r.open ?? null, r.high ?? null, r.low ?? null]);
+        // indices: up to 12 months a call, same chaining
+        const h = isIndex ? await this.nse.bh('get_index_history', { indexName: await this.indexName(sym), months: 12, endDate: end }) : await this.nse.bh('get_stock_history', { symbol: sym, months: 3, endDate: end });
+        const rows = (h.data || h.history || h.rows || []).filter((r) => r.close && r.date).map((r) => [r.date, r.close, r.volume ?? null, r.open ?? null, r.high ?? null, r.low ?? null]);
         if (!rows.length) { complete = true; break; }
         points.unshift(...rows);                                                          // older chunks go in front
         next = h.next_end_date || null;

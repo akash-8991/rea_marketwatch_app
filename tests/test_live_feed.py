@@ -133,6 +133,28 @@ class Intraday(Base):
         self.assertEqual(market.intraday("AAA")["bars"], [])
 
 
+class Indices(Base):
+    def test_an_index_key_resolves_charts_and_records(self):
+        self.assertEqual(market.index_key("NIFTY 50"), "IDX_NIFTY_50")
+        self.assertEqual(market.index_name("IDX_NIFTY_BANK"), "NIFTY BANK")
+        got = {}
+        orig = self.bh
+        def bh(tool, args=None):
+            if tool == "get_index_history":
+                got.update(args)
+                return {"data": [{"date": "2026-10-22", "open": 1, "high": 3, "low": 0.5, "close": 2, "volume": 7}], "next_end_date": None}
+            return orig(tool, args)
+        nse.bh = bh
+        h = market.history("IDX_NIFTY_50", "1Y")
+        self.assertEqual(got["indexName"], "NIFTY 50")
+        self.assertEqual(h["points"][0], ["2026-10-22", 2, 7, 1, 3, 0.5])
+        r = market.live_feed(["IDX_NIFTY_50", "AAA"])
+        q = [x for x in r["quotes"] if x["sym"] == "IDX_NIFTY_50"][0]
+        self.assertEqual((q["price"], q["prev"], q["status"]), (105 * 200, 20000, "live"))
+        self.assertTrue(any(x["sym"] == "AAA" for x in r["quotes"]))
+        self.assertEqual(market.intraday("IDX_NIFTY_50")["bars"][-1][4], 105 * 200)
+
+
 class HistoryOhlc(Base):
     def test_history_keeps_open_high_low_and_refetches_old_closes_only_copies(self):
         h = market.history("AAA", "1Y")

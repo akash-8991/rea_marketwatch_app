@@ -4,7 +4,7 @@
  * Data: daily and longer candles come from NSE's daily history (open, high, low, close, volume). NSE keeps no intraday history, so 5 min, 15 min and hourly
  * candles are built from the live prices MarketLens records while it is open (see ticks.py / ticks.js); the page says so when they are missing. */
 import { $, $$, esc, money, signed, api, icon, store, fmtDate, debounce } from './lib.js';
-import { tabs, bindTabs, buttonClass, alert, skeletonBlock, badge } from './ui.js';
+import { alert, skeletonBlock, badge } from './ui.js';
 import { TIMEFRAMES, INTRADAY, candlesFor, applyTick, indicators, analyse } from './ta.js';
 
 const OVERLAYS = [['ema', 'EMA 9 / 21'], ['sma20', 'SMA 20'], ['sma50', 'SMA 50'], ['sma200', 'SMA 200'], ['bb', 'Bollinger'], ['st', 'Supertrend'], ['vwap', 'VWAP'], ['sr', 'Support / resistance'], ['piv', 'Pivots'], ['fib', 'Fibonacci']];
@@ -25,21 +25,78 @@ export function mount(root, { sym: start, bySym }) {
   const persist = () => store.set('ml.ta', { sym: S.sym, tf: S.tf, on: S.on, panels: S.panels });
   const stop = [];
 
-  root.innerHTML = `<div class="grid gap-3"><div class="flex flex-wrap items-end justify-between gap-3"><div><h1 class="m-0">Chart analysis</h1>
-    <p class="m-0 mt-1 text-sm text-muted-foreground">Candlesticks, indicators, support and resistance, patterns and a written technical read, from 5-minute to yearly candles.</p></div>
-    <form id="ta-form" class="flex items-end gap-2" autocomplete="off"><label class="grid gap-1 text-xs">Stock<input id="ta-sym" list="ta-sugg" maxlength="24" value="${esc(S.sym)}" class="h-9 w-40 rounded-md border border-input bg-card px-3 text-sm"></label><datalist id="ta-sugg"></datalist><button type="submit" class="${buttonClass({})}">${icon('chart-candlestick', 16)}Show</button></form></div>
-    <section class="card"><div class="flex flex-wrap items-center justify-between gap-2">${tabs(TIMEFRAMES.map(([k, l]) => [k, l]), S.tf, { id: 'ta-tf', label: 'Candle size' })}<div class="flex items-center gap-1" style="flex:none;white-space:nowrap" role="group" aria-label="Zoom and pan"><button type="button" class="${buttonClass({ variant: 'outline', size: 'sm' })}" data-z="in" aria-label="Zoom in">+</button><button type="button" class="${buttonClass({ variant: 'outline', size: 'sm' })}" data-z="out" aria-label="Zoom out">−</button><button type="button" class="${buttonClass({ variant: 'outline', size: 'sm' })}" data-z="left" aria-label="Earlier">‹</button><button type="button" class="${buttonClass({ variant: 'outline', size: 'sm' })}" data-z="right" aria-label="Later">›</button><button type="button" class="${buttonClass({ variant: 'outline', size: 'sm' })}" data-z="all">All</button></div></div>
+  const isIndex = (k) => /^IDX_/.test(k || '');
+  const D0 = window.MLData || {};
+  const indexNames = () => { const seen = new Map(); const add = (n) => { if (n && !seen.has(indexKey(n))) seen.set(indexKey(n), n); }; (D0.indices || []).forEach((x) => add(x.name)); (D0.sectorIdx || []).forEach((x) => add(x.index)); (D0.valuation || []).forEach((x) => add(x.name)); return [...seen.entries()].map(([key, name]) => ({ key, name })); };
+  const indexKey = (name) => 'IDX_' + String(name).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const labelOf = (key) => (isIndex(key) ? (indexNames().find((x) => x.key === key) || { name: key.slice(4).replace(/_/g, ' ') }).name : key);
+  const recent = () => store.get('ml.ta.recent', []).filter((r) => r && r.sym);
+  const remember = (sym, name) => store.set('ml.ta.recent', [{ sym, name: name || '' }, ...recent().filter((r) => r.sym !== sym)].slice(0, 6));
+
+  root.innerHTML = `<div class="grid gap-3"><div><h1 class="m-0">Chart analysis</h1>
+    <p class="m-0 mt-1 text-sm text-muted-foreground">Candlesticks, indicators, support and resistance, patterns and a written technical read, from 5-minute to yearly candles, for stocks and indices.</p></div>
+    <section class="card ta-card"><div class="ta-top"><div class="ta-pick"><button type="button" id="ta-pick-btn" class="ta-pick-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="ta-pop" aria-label="Choose a stock or index"></button>
+        <div id="ta-pop" class="ta-pop" hidden><div class="ta-q"><span aria-hidden="true">${icon('command', 14)}</span><input id="ta-q" type="text" role="combobox" aria-expanded="true" aria-controls="ta-list" aria-autocomplete="list" placeholder="Search a stock or an index" autocomplete="off" maxlength="40"></div><div id="ta-list" class="ta-list" role="listbox" aria-label="Stocks and indices"></div></div></div>
+      <div class="ta-zoom" role="group" aria-label="Zoom and pan"><button type="button" class="ta-btn" data-z="in" aria-label="Zoom in">+</button><button type="button" class="ta-btn" data-z="out" aria-label="Zoom out">−</button><button type="button" class="ta-btn" data-z="left" aria-label="Earlier">‹</button><button type="button" class="ta-btn" data-z="right" aria-label="Later">›</button><button type="button" class="ta-btn ta-btn-wide" data-z="all">All</button></div></div>
+      <div class="viewtabs" role="tablist" id="ta-tf" aria-label="Candle size">${TIMEFRAMES.map(([k, l]) => `<button type="button" role="tab" class="vt ${k === S.tf ? 'on' : ''}" aria-selected="${k === S.tf}" tabindex="${k === S.tf ? 0 : -1}" data-tab="${k}">${esc(l)}</button>`).join('')}</div>
       <p id="ta-head" class="m-0 mt-2 text-sm" aria-live="polite"></p>
-      <div id="ta-opts" class="mt-2 grid gap-1"></div>
+      <div id="ta-opts" class="ta-opts"></div>
       <div id="ta-chart" class="mt-3" style="min-height:260px"></div><p id="ta-note" class="m-0 mt-2 text-xs text-muted-foreground"></p></section>
     <div id="ta-read"></div></div>`;
-  bindTabs($('#ta-tf', root), (tf) => { S.tf = tf; persist(); S.from = null; load(); });
-  $('#ta-form', root).addEventListener('submit', (e) => { e.preventDefault(); const v = $('#ta-sym', root).value.trim().toUpperCase(); if (/^[A-Z0-9&_-]{1,24}$/.test(v)) { S.sym = v; S.daily = []; S.bars = []; S.from = null; persist(); location.hash = `#/chart/${encodeURIComponent(v)}`; } });
-  $('#ta-sym', root).addEventListener('input', debounce((e) => { const v = e.target.value.trim(); if (v.length >= 2) api(`/api/search?q=${encodeURIComponent(v)}`, { quiet: true, retries: 0 }).then((r) => { const dl = $('#ta-sugg', root); if (dl) dl.innerHTML = r.results.slice(0, 8).map((x) => `<option value="${esc(x.symbol)}">${esc(x.name || '')}</option>`).join(''); }).catch(() => {}); }, 200));
-  const chip = (group, k, l, on) => `<button type="button" class="chip ${on ? 'on' : ''}" data-${group}="${k}" aria-pressed="${on}">${esc(l)}</button>`;
+  const tfList = $('#ta-tf', root), tfAll = () => [...tfList.querySelectorAll('[role=tab]')];
+  const pickTf = (el) => { tfAll().forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }); S.tf = el.dataset.tab; persist(); S.from = null; load(); };
+  tfList.addEventListener('click', (e) => { const b = e.target.closest('[role=tab]'); if (b) pickTf(b); });
+  tfList.addEventListener('keydown', (e) => { const t = tfAll(), i = t.indexOf(document.activeElement), to = { ArrowRight: (i + 1) % t.length, ArrowLeft: (i - 1 + t.length) % t.length, Home: 0, End: t.length - 1 }[e.key]; if (to !== undefined && i >= 0) { e.preventDefault(); t[to].focus(); pickTf(t[to]); } });
+
+  /* ---------- the stock / index picker: one searchable list, indices and stocks together ---------- */
+  const btn = $('#ta-pick-btn', root), pop = $('#ta-pop', root), qIn = $('#ta-q', root), list = $('#ta-list', root);
+  let opts = [], act = -1, found = [], seq = 0;
+  const paintBtn = () => { const idx = isIndex(S.sym); btn.innerHTML = `<span class="ta-tag ${idx ? 'ta-tag-idx' : ''}">${idx ? 'Index' : 'Stock'}</span><b>${esc(labelOf(S.sym))}</b>${icon('chevron-down', 14)}`; };
+  const optHtml = (o, i) => `<div role="option" id="ta-o${i}" class="ta-opt ${i === act ? 'on' : ''}" data-i="${i}" aria-selected="${i === act}"><span class="ta-tag ${o.index ? 'ta-tag-idx' : ''}">${o.index ? 'Index' : 'Stock'}</span><b>${esc(o.label)}</b><span class="ta-name">${esc(o.name || '')}</span></div>`;
+  function renderList() {
+    const q = qIn.value.trim().toUpperCase(); opts = [];
+    const idxAll = indexNames().map((x) => ({ sym: x.key, label: x.name, name: '', index: true }));
+    const stocksTop = (D0.stocks || []).slice(0, 8).map((x) => ({ sym: x.sym, label: x.sym, name: x.sector || '', index: false }));
+    const groups = [];
+    if (!q) {
+      const rec = recent().map((r) => ({ sym: r.sym, label: labelOf(r.sym), name: r.name || '', index: isIndex(r.sym) }));
+      if (rec.length) groups.push(['Recent', rec]);
+      const head = ['NIFTY 50', 'NIFTY BANK', 'NIFTY NEXT 50', 'NIFTY MIDCAP 100', 'INDIA VIX'].map(indexKey);
+      groups.push(['Indices', idxAll.filter((x) => head.includes(x.sym)).concat(idxAll.filter((x) => !head.includes(x.sym)).slice(0, 7))]);
+      groups.push(['Most traded stocks', stocksTop]);
+    } else {
+      const idx = idxAll.filter((x) => x.label.toUpperCase().includes(q) || x.sym.includes(q.replace(/\W+/g, '_'))).slice(0, 8);
+      const local = (D0.stocks || []).filter((x) => x.sym.includes(q)).slice(0, 6).map((x) => ({ sym: x.sym, label: x.sym, name: x.sector || '', index: false }));
+      const seen = new Set(local.map((x) => x.sym)), remote = found.filter((x) => !seen.has(x.sym));
+      if (idx.length) groups.push(['Indices', idx]);
+      if (local.length || remote.length) groups.push(['Stocks', [...local, ...remote].slice(0, 10)]);
+    }
+    let n = 0; const out = [];
+    for (const [title, items] of groups) { if (!items.length) continue; out.push(`<div class="ta-group" role="presentation">${esc(title)}</div>`); for (const o of items) { opts.push(o); out.push(optHtml(o, n++)); } }
+    if (!opts.length) out.push(`<div class="ta-empty">${q.length < 2 ? 'Type at least two letters' : 'No stock or index matches'}</div>`);
+    list.innerHTML = out.join(''); if (act >= opts.length) act = opts.length - 1;
+    if (act >= 0) qIn.setAttribute('aria-activedescendant', `ta-o${act}`); else qIn.removeAttribute('aria-activedescendant');
+  }
+  const open = () => { pop.hidden = false; btn.setAttribute('aria-expanded', 'true'); qIn.value = ''; found = []; act = -1; renderList(); qIn.focus(); };
+  const close = (back = true) => { if (pop.hidden) return; pop.hidden = true; btn.setAttribute('aria-expanded', 'false'); if (back) btn.focus(); };
+  const choose = (o) => { if (!o) return; close(); remember(o.sym, o.index ? '' : o.name); S.sym = o.sym; S.daily = []; S.bars = []; S.from = null; persist(); if (location.hash !== `#/chart/${encodeURIComponent(o.sym)}`) location.hash = `#/chart/${encodeURIComponent(o.sym)}`; };
+  btn.addEventListener('click', () => (pop.hidden ? open() : close()));
+  qIn.addEventListener('input', () => { act = -1; renderList(); const v = qIn.value.trim(); if (v.length >= 2) { const mine = ++seq; api(`/api/search?q=${encodeURIComponent(v)}`, { quiet: true, retries: 0 }).then((r) => { if (mine !== seq) return; found = (r.results || []).slice(0, 8).map((x) => ({ sym: x.symbol, label: x.symbol, name: x.name || '', index: false })); renderList(); }).catch(() => {}); } });
+  qIn.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (!opts.length) return; act = (act + (e.key === 'ArrowDown' ? 1 : -1) + opts.length) % opts.length; renderList(); $(`#ta-o${act}`, list)?.scrollIntoView({ block: 'nearest' }); }
+    else if (e.key === 'Enter') { e.preventDefault(); const q = qIn.value.trim().toUpperCase(); choose(opts[act >= 0 ? act : 0] || (/^[A-Z0-9&_-]{1,24}$/.test(q) ? { sym: q, label: q, name: '', index: false } : null)); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); } else if (e.key === 'Tab') close(false);
+  });
+  list.addEventListener('mousemove', (e) => { const o = e.target.closest('[data-i]'); if (o && +o.dataset.i !== act) { act = +o.dataset.i; $$('.ta-opt', list).forEach((x) => { x.classList.toggle('on', +x.dataset.i === act); x.setAttribute('aria-selected', +x.dataset.i === act); }); } });
+  list.addEventListener('click', (e) => { const o = e.target.closest('[data-i]'); if (o) choose(opts[+o.dataset.i]); });
+  const outside = (e) => { if (!pop.hidden && !e.target.closest('.ta-pick')) close(false); };
+  document.addEventListener('pointerdown', outside); stop.push(() => document.removeEventListener('pointerdown', outside));
+  paintBtn();
+
+  const chip = (group, k, l, on) => `<button type="button" class="ta-chip ${on ? 'on' : ''}" data-${group}="${k}" aria-pressed="${on}">${esc(l)}</button>`;
   function paintOpts() {
-    $('#ta-opts', root).innerHTML = `<div class="chips" role="group" aria-label="Overlays on the price chart"><span class="muted text-xs self-center">Overlays</span>${OVERLAYS.filter(([k]) => k !== 'vwap' || INTRADAY.has(S.tf)).map(([k, l]) => chip('ov', k, l, S.on.includes(k))).join('')}</div>
-      <div class="chips" role="group" aria-label="Indicator panels"><span class="muted text-xs self-center">Panels</span>${PANELS.map(([k, l]) => chip('pn', k, l, S.panels.includes(k))).join('')}</div>`;
+    $('#ta-opts', root).innerHTML = `<span class="ta-lbl" id="ta-ovl">Overlays</span><div class="ta-chips" role="group" aria-labelledby="ta-ovl">${OVERLAYS.filter(([k]) => k !== 'vwap' || INTRADAY.has(S.tf)).map(([k, l]) => chip('ov', k, l, S.on.includes(k))).join('')}</div>
+      <span class="ta-lbl" id="ta-pnl">Panels</span><div class="ta-chips" role="group" aria-labelledby="ta-pnl">${PANELS.map(([k, l]) => chip('pn', k, l, S.panels.includes(k))).join('')}</div>`;
     $$('[data-ov]', root).forEach((b) => b.addEventListener('click', () => { const k = b.dataset.ov; S.on = S.on.includes(k) ? S.on.filter((x) => x !== k) : [...S.on, k]; persist(); paintOpts(); draw(); }));
     $$('[data-pn]', root).forEach((b) => b.addEventListener('click', () => { const k = b.dataset.pn; S.panels = S.panels.includes(k) ? S.panels.filter((x) => x !== k) : [...S.panels, k]; persist(); paintOpts(); draw(); }));
   }
@@ -83,7 +140,7 @@ export function mount(root, { sym: start, bySym }) {
     const head = $('#ta-head', root), note = $('#ta-note', root);
     if (cs.length < 2) {
       const intr = INTRADAY.has(S.tf);
-      host.innerHTML = alert({ variant: 'default', title: intr ? 'No intraday candles recorded yet' : 'No candles for this symbol', text: intr ? `NSE’s servers keep daily history only, so MarketLens builds 5-minute, 15-minute and hourly candles from the live prices it sees while it is open (Monday to Friday, 9:15 to 15:30 India time). ${marketLive() ? 'The market is open: keep this page open and the first candles appear within a minute or two.' : 'The market is closed now: candles appear once the app has been open during a session.'} Daily, weekly, monthly and yearly candles are available now.` : 'NSE returned no price history for this symbol.' });
+      host.innerHTML = alert({ variant: 'default', title: intr ? 'No intraday candles recorded yet' : 'No candles for this symbol', text: intr ? `${isIndex(S.sym) ? 'Index levels are recorded from the live feed while MarketLens is open. ' : ''}NSE’s servers keep daily history only, so MarketLens builds 5-minute, 15-minute and hourly candles from the live prices it sees while it is open (Monday to Friday, 9:15 to 15:30 India time). ${marketLive() ? 'The market is open: keep this page open and the first candles appear within a minute or two.' : 'The market is closed now: candles appear once the app has been open during a session.'} Daily, weekly, monthly and yearly candles are available now.` : 'NSE returned no price history for this symbol.' });
       head.textContent = ''; note.textContent = ''; return;
     }
     const n = cs.length; S.count = Math.max(10, Math.min(S.count, n)); S.from = Math.max(0, Math.min(n - S.count, S.from ?? n - S.count));
@@ -134,7 +191,7 @@ export function mount(root, { sym: start, bySym }) {
     // time axis
     const ticks = Math.max(2, Math.min(6, Math.floor((W - pl - pr) / 90)));
     for (let k = 0; k < ticks; k++) { const i = a + Math.round(((vis.length - 1) * k) / (ticks - 1)); g.push(`<text x="${xs(i)}" y="${H - 6}" class="ax" text-anchor="${k === 0 ? 'start' : k === ticks - 1 ? 'end' : 'middle'}">${esc(stamp(cs[i].t, S.tf))}</text>`); }
-    host.innerHTML = `<div class="relative"><svg id="ta-svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Candlestick chart of ${esc(S.sym)}, ${esc(TIMEFRAMES.find((t) => t[0] === S.tf)[1])} candles" tabindex="0" style="display:block;touch-action:pan-y;cursor:crosshair">${g.join('')}<line id="ta-x" y1="${pt}" y2="${H - bottomAxis}" class="xh" style="display:none"/></svg><div id="ta-tip" class="chart-tip" style="display:none;min-width:11rem"></div></div>`;
+    host.innerHTML = `<div class="relative"><svg id="ta-svg" viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Candlestick chart of ${esc(labelOf(S.sym))}, ${esc(TIMEFRAMES.find((t) => t[0] === S.tf)[1])} candles" tabindex="0" style="display:block;touch-action:pan-y;cursor:crosshair">${g.join('')}<line id="ta-x" y1="${pt}" y2="${H - bottomAxis}" class="xh" style="display:none"/></svg><div id="ta-tip" class="chart-tip" style="display:none;min-width:11rem"></div></div>`;
     const svg = $('#ta-svg', host), tip = $('#ta-tip', host), cx = $('#ta-x', host);
     const idxAt = (clientX) => { const r = svg.getBoundingClientRect(), f = ((clientX - r.left) / r.width) * W; return Math.max(a, Math.min(b - 1, a + Math.floor((f - pl) / cw))); };
     const show = (i) => { const c = cs[i], prev = cs[i - 1], chg = prev ? ((c.c - prev.c) / prev.c) * 100 : null, tone = c.c >= c.o ? 'up' : 'down';
@@ -151,8 +208,8 @@ export function mount(root, { sym: start, bySym }) {
     svg.addEventListener('keydown', (e) => { const m = { ArrowLeft: 'left', ArrowRight: 'right', '+': 'in', '=': 'in', '-': 'out' }[e.key]; if (m) { e.preventDefault(); zoom(m); } });
     // header line and notes
     const c = cs[n - 1], p = cs[n - 2], chg = p ? ((c.c - p.c) / p.c) * 100 : null, tone = chg == null ? '' : chg >= 0 ? 'up' : 'down', live = marketLive() && (INTRADAY.has(S.tf) || S.live);
-    head.innerHTML = `<b>${esc(S.sym)}</b> · ${esc(TIMEFRAMES.find((t) => t[0] === S.tf)[1])} · <b class="tabular-nums ${tone}">${money(c.c)}</b> ${chg != null ? `<span class="${tone}">${signed(chg)}%</span>` : ''} · ${n} candles${live ? ` · ${badge('Live', { variant: 'success', iconName: 'circle-dot' })}` : ''}`;
-    note.textContent = INTRADAY.has(S.tf) ? `Intraday candles are built from live prices recorded while MarketLens is open (${S.bars.length ? `${S.bars.length} one-minute bars since ${stamp(S.bars[0][0], '5m')}` : 'none yet'}). NSE keeps daily history only.` : `Daily history from NSE since ${esc(fmtDate(S.earliest || cs[0].t))}${S.tf === '1Y' ? '; NSE history starts in January 2024, so there are only a few yearly candles' : ''}.`;
+    head.innerHTML = `<b>${esc(labelOf(S.sym))}</b> · ${esc(TIMEFRAMES.find((t) => t[0] === S.tf)[1])} · <b class="tabular-nums ${tone}">${money(c.c)}</b> ${chg != null ? `<span class="${tone}">${signed(chg)}%</span>` : ''} · ${n} candles${live ? ` · ${badge('Live', { variant: 'success', iconName: 'circle-dot' })}` : ''}`;
+    note.textContent = INTRADAY.has(S.tf) ? `Intraday candles are built from live prices recorded while MarketLens is open (${S.bars.length ? `${S.bars.length} one-minute bars since ${stamp(S.bars[0][0], '5m')}` : 'none yet'}). NSE keeps daily history only.` : `${isIndex(S.sym) ? 'Index history' : 'Daily history'} from NSE since ${esc(fmtDate(S.earliest || cs[0].t))}${S.tf === '1Y' ? '; NSE history starts in January 2024, so there are only a few yearly candles' : ''}.`;
   }
 
   /* ---------- the written read ---------- */

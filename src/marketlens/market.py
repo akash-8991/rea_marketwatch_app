@@ -401,6 +401,25 @@ def quotes(symbols, state=None, fresh=False):
 
 
 # ---------- history for the chart (daily closes; NSE keeps them from 1 Jan 2024) ----------
+INDEX_PREFIX = "IDX_"
+
+
+def index_key(name):
+    """The symbol-shaped key the chart page uses for an index: 'NIFTY 50' -> 'IDX_NIFTY_50'."""
+    return INDEX_PREFIX + re.sub(r"[^A-Z0-9]+", "_", str(name).upper()).strip("_")
+
+
+def index_name(key):
+    """Back from the key to NSE's index name, using the live list when it is available (names can hold characters a key cannot)."""
+    try:
+        for n in _live_indices():
+            if index_key(n) == key:
+                return n
+    except Exception:
+        pass
+    return key[len(INDEX_PREFIX):].replace("_", " ")
+
+
 def history(sym, rng):
     """Daily closes for a range. NSE returns at most three months per call and the next call needs the previous one's next_end_date, so chunks are
     fetched one after another and saved: later ranges, and the next visit, cost nothing."""
@@ -409,6 +428,7 @@ def history(sym, rng):
         return {"sym": sym, "range": rng, "available": False,
                 "reason": "NSE’s servers provide daily data only, so there is no intraday chart." if rng == "1D" else "unknown range"}
     key = "hist-" + sym
+    is_index = sym.startswith(INDEX_PREFIX)
     cutoff = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
     rec = store.disk_get(key)
     age = store.disk_age(key)
@@ -423,8 +443,13 @@ def history(sym, rng):
         nxt, complete, guard = (rec or {}).get("next"), False, 0
         while not complete and guard < 16 and (not points or points[0][0] > cutoff):
             guard += 1
-            h = nse.bh("get_stock_history", {"symbol": sym, "months": 3, "endDate": end})
-            rows = [[r["date"], r["close"], r.get("volume"), r.get("open"), r.get("high"), r.get("low")] for r in h.get("data", []) if r.get("close")]
+            if is_index:   # indices: up to 12 months a call, same chaining; the volume is the index's traded volume when NSE publishes one
+                h = nse.bh("get_index_history", {"indexName": index_name(sym), "months": 12, "endDate": end})
+                data = h.get("data") or h.get("history") or h.get("rows") or []
+            else:
+                h = nse.bh("get_stock_history", {"symbol": sym, "months": 3, "endDate": end})
+                data = h.get("data", [])
+            rows = [[r["date"], r["close"], r.get("volume"), r.get("open"), r.get("high"), r.get("low")] for r in data if r.get("close") and r.get("date")]
             if not rows:
                 complete = True
                 break
@@ -479,11 +504,31 @@ def live_feed(symbols):
                 out["sectorIndices"].append({"sector": sec, "index": lv.get("indexName") or ix, "pct": lv.get("percChange")})
     except Exception as e:
         out["indicesError"] = str(e)[:120]
-    listed = []
+    listed, wanted = [], []
     for raw in symbols[:40]:
         sym = (raw or "").strip().upper()
-        if SYMBOL_RE.match(sym) and sym not in listed:
-            listed.append(sym)
+        if SYMBOL_RE.match(sym) and sym not in listed and sym not in wanted:
+            (wanted if sym.startswith(INDEX_PREFIX) else listed).append(sym)
+    try:   # indices on screen (the chart page) come back as quotes under their IDX_ key; the headline and sector indices are recorded for intraday charts
+        by = _live_indices()
+        keyed = {index_key(n): lv for n, lv in by.items()}
+        in_session = marketclock.in_session_hours(t)
+        for key in wanted:
+            lv = keyed.get(key)
+            if lv and lv.get("last"):
+                out["quotes"].append({"sym": key, "price": lv["last"], "prev": lv.get("previousClose"), "abs": lv.get("change"), "chg": lv.get("percChange"), "open": lv.get("open"),
+                                      "high": lv.get("high"), "low": lv.get("low"), "volume": None, "valueCr": None, "ts": lv.get("timeVal"), "ageMs": None, "status": "live" if state["live"] else "closed", "hi52": None, "lo52": None})
+        if in_session:
+            for n in HEADLINE_INDICES + [ix for _, ix in SECTOR_INDICES]:
+                lv = by.get(n.upper())
+                if lv and lv.get("last"):
+                    ticks.record(index_key(n), lv["last"], None, None)
+            for key in wanted:
+                lv = keyed.get(key)
+                if lv and lv.get("last"):
+                    ticks.record(key, lv["last"], None, None)
+    except Exception:
+        pass
     if listed:
         for q in quotes(listed, state)["quotes"]:
             out["quotes"].append({k: q.get(k) for k in ("sym", "price", "prev", "abs", "chg", "open", "high", "low", "volume", "valueCr", "ts", "ageMs", "status", "hi52", "lo52")})

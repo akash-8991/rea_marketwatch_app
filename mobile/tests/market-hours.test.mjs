@@ -57,6 +57,7 @@ function market({ price, day, hang = false }) {
       case 'get_top_by_volume': out = { stocks: SYMS.map((symbol) => ({ symbol, series: 'EQ', traded_value: 1e10 })) }; break;
       case 'get_bulk_quote': out = { quotes: a.symbols.map((symbol) => ({ symbol, close: 100, open: 99, high: 101, low: 98, prev_close: 99, volume: 10, date: '2026-10-23' })) }; break;
       case 'cm_get_stock_quote': out = { stock: { lastTradedPrice: price.v, preClosePrice: 100, openPrice: 100, highPrice: price.v, lowPrice: 99, volume: 1000, value: 12.5, fiftyTwoWeekHigh: 150, fiftyTwoWeekLow: 80, perChange30d: 3.3, latestTimestamp: `${day} 10:42:11` } }; break;
+      case 'get_index_history': s.lastIndexArgs = a; out = { data: [{ date: '2026-10-22', open: 21900, high: 22100, low: 21800, close: 22000, volume: 5 }, { date: '2026-10-23', open: 22000, high: 22300, low: 21900, close: 22200, volume: 6 }], next_end_date: null }; break;
       case 'cm_get_live_indices': out = { indices: { derivatives: [{ indexName: 'NIFTY 50', last: price.v * 200, previousClose: 20000, percChange: 1 }] } }; break;
       default: out = { date: '2026-10-23' };
     }
@@ -159,4 +160,15 @@ test('with many symbols on screen each is refreshed proportionally less often (a
   await get(e, `/api/live?symbols=${syms}`); assert.equal(srv.tools.cm_get_stock_quote, 30);
   clock.t += 1500; await get(e, `/api/live?symbols=${syms}`); assert.equal(srv.tools.cm_get_stock_quote, 30, '30 symbols at 10 calls a second: 3 s between refreshes');
   clock.t += 2000; await get(e, `/api/live?symbols=${syms}`); assert.equal(srv.tools.cm_get_stock_quote, 60);
+});
+
+test('indices can be charted: daily history by key, a live quote under the key, and intraday bars recorded from the feed', async () => {
+  const clock = { t: at('2026-10-26T10:45:00') }, price = { v: 105 }, srv = market({ price, day: '2026-10-26' }), e = mk(srv, clock);
+  const h = await get(e, '/api/history/IDX_NIFTY_50?range=1Y');
+  assert.equal(h.available, true); assert.deepEqual(h.points[0], ['2026-10-22', 22000, 5, 21900, 22100, 21800]); assert.equal(srv.lastIndexArgs.indexName, 'NIFTY 50');
+  const live = await get(e, '/api/live?symbols=IDX_NIFTY_50,AAA');
+  const ix = live.quotes.find((q) => q.sym === 'IDX_NIFTY_50'); assert.equal(ix.price, 105 * 200); assert.equal(ix.prev, 20000); assert.equal(ix.status, 'live'); assert.ok(live.quotes.some((q) => q.sym === 'AAA'));
+  await new Promise((r) => setTimeout(r, 20));
+  const bars = (await get(e, '/api/intraday/IDX_NIFTY_50')).bars; assert.ok(bars.length >= 1 && bars[bars.length - 1][4] === 105 * 200);
+  assert.ok((await get(e, '/api/intraday/IDX_NIFTY_BANK')).bars.length === 0, 'an index that is not in the mock feed has no bars');
 });

@@ -153,6 +153,15 @@ class StylesheetRules(unittest.TestCase):
         dash = (STATIC / "js" / "dashboard.js").read_text()
         self.assertRegex(dash, r"auto: true, interval: 1,")
 
+    def test_chart_page_has_the_shared_tabs_a_combobox_and_compact_chips(self):
+        view = (STATIC / "js" / "chart-view.js").read_text()
+        self.assertIn('class="viewtabs"', view)
+        self.assertIn('role="combobox"', view)
+        self.assertIn('role="listbox"', view)
+        self.assertIn("IDX_", view)
+        self.assertRegex(CSS, r"\.ta-chip \{[^}]*font-size:\s*\.75rem")
+        self.assertRegex(CSS, r"\.ta-pop \{[^}]*position:\s*absolute")
+
 
 if __name__ == "__main__":
     unittest.main()

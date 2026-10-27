@@ -374,7 +374,35 @@ dialog { max-width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); overflo
 .flash-up { animation: flash-up .9s ease-out; } .flash-down { animation: flash-down .9s ease-out; }
 @media (prefers-reduced-motion: reduce) { .flash-up, .flash-down { animation: none; } }
 /* chart analysis page: option chips wrap instead of scrolling sideways; the indicator and read cards stay inside the screen */
-#ta-opts .chips { flex-wrap: wrap; overflow: visible; }
 #ta-chart svg { max-width: 100%; }
 #ta-read .scroll { max-width: 100%; }
-[aria-label="Zoom and pan"] .btn, [aria-label="Zoom and pan"] button { min-width: 2.5rem; white-space: nowrap; flex: none; }
+
+/* chart analysis: picker, zoom buttons, compact indicator chips */
+.ta-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.ta-pick { position: relative; min-width: 0; }
+.ta-pick-btn { display: inline-flex; align-items: center; gap: .5rem; height: var(--ctl-h); padding: 0 .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; max-width: 100%; }
+.ta-pick-btn b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ta-pick-btn:hover { border-color: var(--brand); }
+.ta-tag { font-size: .625rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: .1rem .35rem; border-radius: 4px; background: var(--surface-2); color: var(--text-muted); flex: none; }
+.ta-tag-idx { background: var(--selection); color: var(--brand); }
+.ta-pop { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; width: min(24rem, calc(100vw - 2rem)); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: 0 10px 30px rgba(0, 0, 0, .18); overflow: hidden; }
+.ta-pop[hidden] { display: none; }
+.ta-q { display: flex; align-items: center; gap: .5rem; padding: 0 .75rem; border-bottom: 1px solid var(--border); color: var(--text-muted); }
+.ta-q input { flex: 1; min-width: 0; height: 2.5rem; border: 0; background: transparent; color: var(--text); font: inherit; outline: none; }
+.ta-list { max-height: min(22rem, 55vh); overflow-y: auto; padding: .25rem; }
+.ta-group { padding: .5rem .6rem .2rem; font-size: .6875rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.ta-opt { display: flex; align-items: center; gap: .5rem; padding: .45rem .6rem; border-radius: var(--radius); cursor: pointer; font-size: .875rem; min-height: 2.25rem; }
+.ta-opt.on { background: var(--surface-2); }
+.ta-opt b { flex: none; } .ta-name { color: var(--text-muted); font-size: .8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ta-empty { padding: 1rem; text-align: center; color: var(--text-muted); font-size: .875rem; }
+.ta-zoom { display: inline-flex; gap: .25rem; flex: none; }
+.ta-btn { min-width: 2rem; height: 2rem; padding: 0 .5rem; border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); color: var(--text); font: inherit; font-size: .875rem; cursor: pointer; white-space: nowrap; }
+.ta-btn:hover { border-color: var(--brand); } .ta-btn-wide { padding: 0 .65rem; }
+.ta-opts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .35rem .75rem; align-items: start; margin-top: .6rem; }
+.ta-lbl { font-size: .6875rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); padding-top: .3rem; }
+.ta-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.ta-chip { height: 1.65rem; padding: 0 .6rem; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); color: var(--text-2); font: inherit; font-size: .75rem; cursor: pointer; white-space: nowrap; }
+.ta-chip:hover { border-color: var(--brand); }
+.ta-chip.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
+@media (pointer: coarse) { .ta-chip { height: 2.25rem; padding: 0 .8rem; } .ta-btn { min-width: 2.75rem; height: 2.75rem; } .ta-opt { min-height: 2.75rem; } .ta-pick-btn { height: 2.75rem; } }
+@media (max-width: 380px) { .ta-opts { grid-template-columns: 1fr; } .ta-lbl { padding-top: 0; } }
