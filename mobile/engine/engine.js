@@ -222,6 +222,9 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
       if (p === '/api/search') return json(await market.search(qs.get('q') || ''));
       m = /^\/api\/quote\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.quote(sym, clockState(), qs.get('fresh') === '1')) : err(400, 'bad symbol'); }
+      if (p === '/api/live') return json(await market.liveFeed((qs.get('symbols') || '').split(',').filter(Boolean)));
+      m = /^\/api\/intraday\/([^/]+)$/.exec(p);
+      if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.intraday(sym)) : err(400, 'bad symbol'); }
       if (p === '/api/quotes') { const list = (qs.get('symbols') || '').split(',').filter(Boolean); return list.length ? json(await market.quotes(list, clockState(), qs.get('fresh') === '1')) : err(400, 'symbols is required (comma separated, at most 50)'); }
       m = /^\/api\/history\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.history(sym, (qs.get('range') || '1M').toUpperCase())) : err(400, 'bad symbol'); }

@@ -5,7 +5,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
-from . import analysis, marketclock, nse, securities, store
+from . import analysis, marketclock, nse, securities, store, ticks
 from .config import settings
 
 SECTOR_MAP = securities.SECTOR_MAP   # symbol -> industry, from NSE's Nifty Total Market list; the same dict is updated in place when the list is refreshed
@@ -310,8 +310,20 @@ def peers(sym, limit=10):
 RANGE_DAYS = {"1W": 7, "1M": 31, "3M": 92, "6M": 183, "1Y": 366, "5Y": 1830, "10Y": 3660}
 
 
-def quote_ttl():
-    return 30 if marketclock.in_session_hours(time.time()) else 900   # NSE itself refreshes about once a minute
+LIVE_TTL = 1.0        # seconds a live quote may be reused while the market trades: the feed asks again every second
+LIVE_BUDGET = 10.0    # at most this many NSE stock-quote calls per second in total; with more symbols on screen each one is refreshed proportionally less often
+_active = {}          # symbol -> last time a client asked for it (the symbols that count against the budget)
+
+
+def quote_ttl(sym=None):
+    if not marketclock.in_session_hours(time.time()):
+        return 900                                            # the market is shut: nothing changes
+    now = time.time()
+    if sym:
+        _active[sym] = now
+    for k in [k for k, t in _active.items() if now - t > 5]:
+        _active.pop(k, None)
+    return max(LIVE_TTL, len(_active) / LIVE_BUDGET)          # one symbol per second at most per budget slot: a fair rotation
 
 
 _fresh_at = {}
@@ -330,7 +342,7 @@ def quote(sym, state=None, fresh=False):
         _fresh_at[sym] = time.time()
         store.forget(key)
     try:
-        fut = _quote_pool.submit(store.cached, key, quote_ttl(), lambda: nse.cm("cm_get_stock_quote", {"symbol": sym}))
+        fut = _quote_pool.submit(store.cached, key, quote_ttl(sym), lambda: nse.cm("cm_get_stock_quote", {"symbol": sym}))
         try:
             q = (fut.result(timeout=QUOTE_DEADLINE) or {}).get("stock")     # if NSE has not replied by then the saved copy is used; the request still finishes and fills the cache
         except FutureTimeout:
@@ -345,6 +357,8 @@ def quote(sym, state=None, fresh=False):
     if not q or not q.get("lastTradedPrice"):
         return {"sym": sym, "name": row.get("company"), "status": "unavailable", "reason": error or "NSE has no quote for this symbol", "exchange": "NSE", "fetchedAt": int(time.time() * 1000)}
     price, prev = q["lastTradedPrice"], q.get("preClosePrice")
+    if not stale and marketclock.in_session_hours(time.time()):
+        ticks.record(sym, price, q.get("volume"), q.get("latestTimestamp"))   # builds the intraday candles
     abs_ = round(price - prev, 2) if prev is not None else None
     chg = q["perChange"] if q.get("perChange") is not None else (round((price - prev) / prev * 100, 2) if prev else None)
     ts = q.get("latestTimestamp")
@@ -357,7 +371,7 @@ def quote(sym, state=None, fresh=False):
     state = state or marketclock.market_state(time.time())
     status = "stale" if stale else ("delayed" if state["live"] and age_ms is not None and age_ms > 300000 else "live") if state["live"] else "closed"
     out = {"sym": sym, "name": row.get("company"), "industry": row.get("industry"), "exchange": "NSE", "price": price, "prev": prev, "abs": abs_, "chg": chg,
-           "volume": q.get("volume"), "valueCr": q.get("value"), "hi52": q.get("fiftyTwoWeekHigh"), "lo52": q.get("fiftyTwoWeekLow"), "ts": ts, "ageMs": age_ms,
+           "open": q.get("openPrice"), "high": q.get("highPrice"), "low": q.get("lowPrice"), "volume": q.get("volume"), "valueCr": q.get("value"), "hi52": q.get("fiftyTwoWeekHigh"), "lo52": q.get("fiftyTwoWeekLow"), "ts": ts, "ageMs": age_ms,
            "status": status, "fetchedAt": int(time.time() * 1000), "ms": round((time.time() - t0) * 1000)}
     if stale:
         out["reason"] = error
@@ -373,6 +387,9 @@ def quotes(symbols, state=None, fresh=False):
             seen.add(sym)
             listed.append(sym)
     state = state or marketclock.market_state(time.time())
+    for sym in listed[:50]:
+        if SYMBOL_RE.match(sym):
+            _active[sym] = time.time()   # count them all before any is fetched, so the rotation is even
 
     def one(sym):
         if not SYMBOL_RE.match(sym):
@@ -397,6 +414,8 @@ def history(sym, rng):
     age = store.disk_age(key)
     if rec and (age is None or age > 12 * 3600):
         rec = None
+    if rec and rec["points"] and len(rec["points"][0]) < 6:
+        rec = None                                            # saved by an older release without open, high and low: fetch again
     covers = lambda r: r and (r["complete"] or (r["points"] and r["points"][0][0] <= cutoff))
     if not covers(rec):
         points = list(rec["points"]) if rec else []
@@ -405,7 +424,7 @@ def history(sym, rng):
         while not complete and guard < 16 and (not points or points[0][0] > cutoff):
             guard += 1
             h = nse.bh("get_stock_history", {"symbol": sym, "months": 3, "endDate": end})
-            rows = [[r["date"], r["close"], r.get("volume")] for r in h.get("data", []) if r.get("close")]
+            rows = [[r["date"], r["close"], r.get("volume"), r.get("open"), r.get("high"), r.get("low")] for r in h.get("data", []) if r.get("close")]
             if not rows:
                 complete = True
                 break
@@ -432,3 +451,48 @@ def history(sym, rng):
     if not pts:
         out["reason"] = "no price history returned for this symbol"
     return out
+
+
+# ---------- the fast live feed: indices, sector indices and the symbols on screen, answered from a one-second cache ----------
+def _live_indices():
+    ttl = LIVE_TTL if marketclock.in_session_hours(time.time()) else 600
+    live = store.cached("live:indices", ttl, lambda: nse.cm("cm_get_live_indices", {"group": "", "nameFilter": ""}))
+    by = {}
+    for group in (live.get("indices") or {}).values():
+        for i in group:
+            by[i["indexName"].upper()] = i
+    return by
+
+
+def live_feed(symbols):
+    """Everything the screens repaint every second: headline indices, sector tiles and the requested stocks (at most 40). Failures degrade to what is cached."""
+    t = time.time()
+    state = marketclock.market_state(t)
+    out = {"t": int(t * 1000), "market": state, "intervalMs": 1000 if state["live"] else 30000, "indices": [], "sectorIndices": [], "quotes": []}
+    try:
+        by = _live_indices()
+        row = lambda lv, name: {"name": lv.get("indexName") or name, "last": lv.get("last"), "prev": lv.get("previousClose"), "pct": lv.get("percChange")}
+        out["indices"] = [row(by[n], n) for n in HEADLINE_INDICES if n in by]
+        for sec, ix in SECTOR_INDICES:
+            lv = by.get(ix.upper())
+            if lv and lv.get("last"):
+                out["sectorIndices"].append({"sector": sec, "index": lv.get("indexName") or ix, "pct": lv.get("percChange")})
+    except Exception as e:
+        out["indicesError"] = str(e)[:120]
+    listed = []
+    for raw in symbols[:40]:
+        sym = (raw or "").strip().upper()
+        if SYMBOL_RE.match(sym) and sym not in listed:
+            listed.append(sym)
+    if listed:
+        for q in quotes(listed, state)["quotes"]:
+            out["quotes"].append({k: q.get(k) for k in ("sym", "price", "prev", "abs", "chg", "open", "high", "low", "volume", "valueCr", "ts", "ageMs", "status", "hi52", "lo52")})
+    return out
+
+
+def intraday(sym):
+    """One-minute bars recorded from live quotes (see ticks.py). The chart page resamples them to 5m, 15m and 1h."""
+    ticks.flush_all()
+    b = ticks.bars(sym)
+    return {"sym": sym, "bars": b, "from": b[0][0] if b else None, "to": b[-1][0] if b else None,
+            "source": "recorded from live NSE quotes while MarketLens was open; NSE's servers keep daily history only"}

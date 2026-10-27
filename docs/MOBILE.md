@@ -57,9 +57,9 @@ Loading is built around three rules, measured against live NSE:
 ## 2c. Live during market hours, last update otherwise
 | When | Stock prices, indices, movers | Option chain |
 |---|---|---|
-| **Market open** (Mon-Fri 09:15-15:30 India time) | live quotes from NSE, refreshed about every minute while the app is open; the banner reads "Market open" | contracts (open interest, closing prices) from NSE's last published end-of-day file; **spot price and the at-the-money row are live** |
-| **Closed** (evenings, nights, weekends, before the open) | the last update of the day, i.e. that session's close; the banner reads "Market closed for the day / weekend / opens at 9:15 am". After the close the app makes one catch-up fetch so the close is real, then stays quiet (data is re-checked at most every 30 minutes) | the last published end-of-day file; spot as in that file |
-| **A weekday holiday** | recognised because NSE's quotes still carry the previous trading day's date; the banner says "No trading today (exchange holiday?)" | as above |
+| **Market open** (Mon-Fri 09:15-15:30 India time) | live quotes, indices and sector tiles from NSE, re-checked every second while the app is open (within a fixed budget of NSE calls); the status pill reads "Live" | contracts (open interest, closing prices) from NSE's last published end-of-day file; **spot price and the at-the-money row are live** |
+| **Closed** (evenings, nights, weekends, before the open) | the last update of the day, i.e. that session's close; the status pill reads "Market closed" (hover or tap it for "closed for the day / weekend / opens at 9:15 am"). After the close the app makes one catch-up fetch so the close is real, then stays quiet (data is re-checked at most every 30 minutes) | the last published end-of-day file; spot as in that file |
+| **A weekday holiday** | recognised because NSE's quotes still carry the previous trading day's date; the status pill's text says "No trading today (exchange holiday?)" | as above |
 
 NSE publishes no free live option feed, and its live option-chain page cannot be used by an app without imitating a browser, so the
 option contracts themselves cannot be live. This is stated on the screen. Live prices cost one request per stock (NSE has no multi-stock

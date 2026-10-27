@@ -257,7 +257,7 @@ details.card summary { cursor: pointer; font-weight: 600; }
 }
 
 /* ---------- accounts ---------- */
-body.unauth nav.main, body.unauth .search, body.unauth #menu, body.unauth #banner, body.unauth #status-pill { display: none !important; }
+body.unauth nav.main, body.unauth .search, body.unauth #menu, body.unauth #status-pill { display: none !important; }
 body.unauth .shell { display: block; }
 .whoami { color: var(--text-2); font-size: var(--fs-sm); white-space: nowrap; margin-left: auto; } .whoami + .btn { margin-right: var(--space-2); }
 .auth { max-width: 32rem; margin: var(--space-5) auto; padding: var(--space-5); }
@@ -367,3 +367,14 @@ dialog { max-width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); overflo
 .strat .tbl td .muted { display: inline-block; max-width: 28rem; }
 .strat .badge, .strat [class*="badge"] { white-space: nowrap; }
 .strat .tbl td.num, .strat .tbl th.num { white-space: nowrap; }
+
+/* a value that just changed flashes green (up) or red (down) for a moment */
+@keyframes flash-up { from { background: var(--up-bg); } to { background: transparent; } }
+@keyframes flash-down { from { background: var(--down-bg); } to { background: transparent; } }
+.flash-up { animation: flash-up .9s ease-out; } .flash-down { animation: flash-down .9s ease-out; }
+@media (prefers-reduced-motion: reduce) { .flash-up, .flash-down { animation: none; } }
+/* chart analysis page: option chips wrap instead of scrolling sideways; the indicator and read cards stay inside the screen */
+#ta-opts .chips { flex-wrap: wrap; overflow: visible; }
+#ta-chart svg { max-width: 100%; }
+#ta-read .scroll { max-width: 100%; }
+[aria-label="Zoom and pan"] .btn, [aria-label="Zoom and pan"] button { min-width: 2.5rem; white-space: nowrap; flex: none; }

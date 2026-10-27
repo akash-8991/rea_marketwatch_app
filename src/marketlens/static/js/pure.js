@@ -73,3 +73,22 @@ export function highlight(text, q) {
   return t.split(re).map((part, i) => (i % 2 ? `<mark class="rounded-sm bg-selection px-0.5 text-foreground">${esc(part)}</mark>` : esc(part))).join('');
 }
 
+/** Write a feed answer into the shared data. Returns how many values changed (for tests and for deciding whether to repaint). */
+export function applyFeed(D, bySym, r) {
+  let changed = 0;
+  const set = (o, k, v) => { if (v != null && o[k] !== v) { o[k] = v; changed++; } };
+  for (const x of r.indices || []) {
+    const ix = (D.indices || []).find((i) => i.name.toUpperCase() === String(x.name).toUpperCase());
+    if (ix) { set(ix, 'last', x.last); set(ix, 'prev', x.prev); }
+  }
+  for (const x of r.sectorIndices || []) {
+    const t = (D.sectorIdx || []).find((s) => s.sector === x.sector);
+    if (t) set(t, 'pct', x.pct);
+  }
+  for (const q of r.quotes || []) {
+    const s = bySym[q.sym]; if (!s || !(q.price > 0) || q.status === 'unavailable') continue;
+    set(s, 'price', q.price); set(s, 'prev', q.prev); set(s, 'volume', q.volume); set(s, 'ts', q.ts); set(s, 'hi52', q.hi52); set(s, 'lo52', q.lo52);
+  }
+  if (r.market) D.market = r.market;
+  return changed;
+}

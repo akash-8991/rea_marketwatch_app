@@ -46,7 +46,7 @@ is committed (13 KB, 3 KB compressed). A React migration remains possible; the t
 | Bulk quote for 50 stocks | one call, about 50 ms when it lands |
 | Daily history depth | starts 2024-01-01 (694 trading days for one stock; 13 calls, about 8.6 s to fetch all) |
 | Live bulk tool (`cm_get_equity_stocks`) | returns an arbitrary 500 of the market; only 7 of the 50 most traded were in it, so it cannot replace per-symbol live quotes |
-| NSE's own refresh rate | about once a minute (stated by the tool), so sub-minute polling returns the same numbers |
+| NSE's own refresh rate | about once a minute (stated by the tool). The page now re-checks every second, so a change shows within about a second of NSE publishing it; between NSE's updates the numbers repeat |
 | Option chain | NSE's live API is bot-protected and is not used; the published end-of-day file is |
 
 ## 8. Confirmed bottlenecks (evidence, root cause, effect, confidence, rollback)
@@ -162,7 +162,7 @@ Reading it honestly:
 | Dashboard under 300 ms | **Met with saved data** (under 1 ms plus about 28 ms to draw); **not met** for a first-ever cold load (about 1.5 s: two NSE rounds in sequence) |
 | p95 API under 300 ms | **Met** for everything served from cache or saved data; **not met** for calls that wait on NSE |
 | p99 API under 150 ms | **Met** for cached paths (under 32 ms at 16 clients); not for uncached NSE calls. (A p99 target below the p95 target is internally inconsistent, since p99 cannot be lower than p95; it was applied to cached paths.) |
-| Data refresh interval of 1 second | **Not achievable at the source**: NSE updates about once a minute. The interface can poll every second, but that re-reads the app's cache (quotes are fetched from NSE at most every 30 s per symbol while the market trades). Not attempted at NSE, to stay inside its limits |
+| Data refresh interval of 1 second | **Done at our end, bounded by the source**: the feed (`/api/live`, `live.js`) asks every second, never overlaps, pauses when hidden and slows to 30 s when the market is shut; the server reuses a quote for 1 s and spends at most 10 NSE stock-quote calls a second across everything on screen (indices and sector tiles are one call). More symbols on screen mean each is refreshed proportionally less often. Whether the value changes every second is up to NSE: the tool states about one update a minute, which could not be verified here (the market was shut while this was built) |
 | Initial usable UI under 100 ms | **Met** on this machine: 28 ms median, 67 ms on a first load. Not measured on a phone |
 | Availability above 99% | **Not measurable here.** By design the app keeps working on saved data when NSE fails (tested), but no uptime figure is claimed |
 

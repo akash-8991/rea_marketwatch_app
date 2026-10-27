@@ -17,8 +17,10 @@ Environment variables: `NSE_CM_MCP_URL`, `NSE_BHAVCOPY_MCP_URL`, `NSE_FO_MCP_URL
 | `GET /api/metrics` (phone engine too) | Per-route request counts by status class, latency p50/p95/p99/max (last 2,000 requests per route), in-flight gauge, counters (`rate_limited`, `load_shed`, `internal_errors`, `connections_refused`), web vitals from real page loads, **data age** per dataset, NSE breaker state, scheduler state. Labels are route templates, never raw paths or IDs. |
 | `GET /api/audit?limit=N` | Recent audit entries and whether the hash chain verifies. |
 | `GET /api/quote/<SYMBOL>[?fresh=1]` | lean quote: price, change, last-trade time and age, company, a status (`live`, `delayed`, `closed`, `stale`, `unavailable`). One NSE call, shared by simultaneous callers, cached 30 s while the market trades and 15 min otherwise; `fresh=1` bypasses the cache at most once per symbol per 5 s; answers from the saved copy (`stale`) if NSE has not replied in 6 s |
+| `GET /api/live?symbols=A,B,…` | the one-second feed (rate class `live`: 120 burst, 40 a second): headline indices, sector tiles and up to 40 stocks (price, change, open, high, low, volume, status), the market state and the interval the page should use (1 s open, 30 s closed) |
+| `GET /api/intraday/<SYMBOL>` | one-minute bars `[epoch s, open, high, low, close, volume]` for the last 5 days, recorded from live quotes while the app was open (NSE keeps daily history only); the chart page builds 5 min, 15 min and hourly candles from them |
 | `GET /api/quotes?symbols=A,B,…` | the same for up to 50 symbols at once (invalid and duplicate symbols handled), order kept |
-| `GET /api/history/<SYMBOL>?range=1W\|1M\|3M\|6M\|1Y\|5Y\|10Y` | daily closes `[date, close, volume]` (the chart offers up to 1Y; 5Y and 10Y serve the strategy lab); NSE's history starts 1 Jan 2024 so long ranges are truncated and say so; fetched in 3-month pieces and saved for 12 h; `1D` answers `available:false` with the reason (no intraday data exists) |
+| `GET /api/history/<SYMBOL>?range=1W\|1M\|3M\|6M\|1Y\|5Y\|10Y` | daily candles `[date, close, volume, open, high, low]` (the chart offers up to 1Y; 5Y and 10Y serve the strategy lab); NSE's history starts 1 Jan 2024 so long ranges are truncated and say so; fetched in 3-month pieces and saved for 12 h; `1D` answers `available:false` with the reason (no intraday data exists) |
 | `GET /api/peers/<SYMBOL>` | peer comparison for one stock (same industry, most traded); about 11 NSE calls, cached a minute |
 | `GET /api/config` | Version, flags, the rating thresholds, the active rate limits. |
 
@@ -28,7 +30,7 @@ Environment variables: `NSE_CM_MCP_URL`, `NSE_BHAVCOPY_MCP_URL`, `NSE_FO_MCP_URL
 | Local interaction to next frame | < 100 ms | ≈ 33 ms (2 frames) |
 | Cached or simple API p95 | < 100 ms | 0.2–1.6 ms (1 client), ≤ 14.5 ms (16 clients) |
 | Backend p95 excluding upstream | < 200 ms | same as above (upstream excluded) |
-| Data freshness (live mode) | quotes ≤ 60 s old; flagged **Delayed** after 10 min | not verified against live NSE |
+| Data freshness (live mode) | the screens re-check every second; a quote is reused for at most 1 s (more with many symbols: see the budget below); flagged **Delayed** after 10 min | not verified against live NSE: NSE's tool states about one update a minute |
 | Errors under 16 clients | 0 | 0 |
 These are engineering targets, not guarantees. No claim is made for sub-millisecond or guaranteed refresh rates.
 
@@ -97,8 +99,8 @@ One JSON line per API request on stderr: `ts`, `level`, `requestId`, `method`, `
 | Symptom | Likely cause | Action |
 |---|---|---|
 | Home shows an older date (for example the previous session) | the saved copy is shown while the refresh runs (a few seconds on the phone, about 15 s on the desktop); if it stays old, the banner says why | wait, then check the banner: *Stale* means NSE could not be reached or paused us |
-| Banner says **Stale** and `/api/metrics` → `upstream.nseRetryInSeconds` > 0 | NSE returned 401/403/429; breaker is open (persisted in `breaker.json`) | Wait for the window. Do not restart repeatedly or add retries. Reduce `--option-interval` traffic if you added an endpoint. |
-| Banner says **Disconnected** | the browser lost the local server | Restart `marketlens`; the page retries with backoff by itself. |
+| Status pill says **Stale** (hover it for the reason) and `/api/metrics` → `upstream.nseRetryInSeconds` > 0 | NSE returned 401/403/429; breaker is open (persisted in `breaker.json`) | Wait for the window. Do not restart repeatedly or add retries. Reduce `--option-interval` traffic if you added an endpoint. |
+| Status pill says **Disconnected** | the browser lost the local server | Restart `marketlens`; the page retries with backoff by itself. |
 | Many `429` | a script or another tab is hammering the API | Check `route` in the log; raise nothing, fix the caller. |
 | `503 server busy` | more than 64 requests in flight | Look for slow upstream calls in `routes.*.p99_ms`. |
 | `marketlens --audit` prints `BROKEN` | rows edited or removed outside the app, or restoring an old backup | Compare with a backup; the first bad id is reported. |
@@ -123,4 +125,4 @@ has no dependencies and bundles no NSE data.
 | Search deadline | 450 ms | typing stays smooth when NSE's symbol search is slow |
 | Saved data first (home data) | the saved copy answers at once and is refreshed in the background; the page polls while `refreshing` is true | a first load after the app was closed never waits for NSE (it used to wait about 13 s, longer than the page's 10 s timeout) |
 | Request coalescing | one in-flight request per key | a burst of identical requests costs one NSE call |
-| Cache TTLs | quotes 30 s open / 15 min closed; history 12 h; peers ranking 30 min | NSE updates about once a minute; asking more often returns the same numbers |
+| Cache TTLs | quotes and live indices 1 s while the market trades, stretched to (symbols on screen ÷ 10) seconds when more than 10 are shown, 15 min closed; history 12 h; peers ranking 30 min | the one-second feed: at most 10 NSE stock-quote calls a second in total, so a busy page never sends more requests, it refreshes each row less often |

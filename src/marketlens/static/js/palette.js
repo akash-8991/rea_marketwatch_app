@@ -14,7 +14,7 @@ const remember = (sym) => store.set('ml.recent', [sym, ...recents().filter((x) =
 
 const ACTIONS = [
   ['go:#/', 'Home', 'layout-dashboard'], ['go:#/markets', 'Markets', 'chart-line'], ['go:#/screener', 'Screener', 'list-filter'], ['go:#/options', 'Option chain', 'layers'],
-  ['go:#/watchlist', 'Watchlist', 'star'], ['go:#/paper', 'Paper trading', 'flask-conical'], ['act:theme', 'Toggle light / dark', 'moon'],
+  ['go:#/watchlist', 'Watchlist', 'star'], ['go:#/chart', 'Chart analysis', 'chart-candlestick'], ['go:#/paper', 'Paper trading', 'flask-conical'], ['act:theme', 'Toggle light / dark', 'moon'],
 ];
 
 function render(q) {

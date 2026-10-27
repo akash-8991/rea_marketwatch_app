@@ -1,7 +1,8 @@
 /* NSE market data assembly: universe snapshot, per-stock detail, background extras, symbol search. Port of market.py. */
 import * as analysis from './analysis.js';
 import { SECTOR_INDICES } from './sectors.js';
-import { inSessionHours } from './marketclock.js';
+import { inSessionHours, marketState } from './marketclock.js';
+import { Ticks } from './ticks.js';
 export const HEADLINE_INDICES = ['NIFTY 50', 'NIFTY BANK', 'NIFTY NEXT 50', 'NIFTY MIDCAP 100'];
 export const SYMBOL_RE = /^[A-Za-z0-9&_-]{1,24}$/;
 const DIV_RE = /(?:Rs\.?|Re\.?|INR)\s*([0-9]+(?:\.[0-9]+)?)/i;
@@ -32,6 +33,8 @@ export class Market {
     this.universeSize = settings.universeSize || 60;
     this.extrasJob = { state: 'idle', done: 0, total: 0 };
     this.freshAt = new Map();
+    this.ticks = new Ticks({ snaps, now: () => this.now().getTime() });
+    this.active = new Map();   // symbol -> last time a client asked for it (the symbols that count against the live budget)
     this.searchDeadlineMs = settings.searchDeadlineMs || 450;   // symbol search answers from saved matches if NSE's search has not replied by then
     this.quoteDeadlineMs = settings.quoteDeadlineMs || 6000;   // a quote is answered from the saved copy if NSE has not replied by then
     this.live = { quotes: {}, received: 0, newest: '', job: { state: 'idle', done: 0, total: 0 }, checkedFor: null };
@@ -265,7 +268,15 @@ export class Market {
   }
 
   /* ---------- lean quotes (one NSE call each, coalesced and cached) ---------- */
-  quoteTtl() { return inSessionHours(this.now().getTime()) ? 30 : 900; }   // NSE itself refreshes about once a minute; asking more often returns the same numbers
+  static LIVE_TTL = 1;       // seconds a live quote may be reused while the market trades: the feed asks again every second
+  static LIVE_BUDGET = 10;   // at most this many NSE stock-quote calls per second in total; with more symbols on screen each is refreshed proportionally less often
+  quoteTtl(sym) {
+    const t = this.now().getTime();
+    if (!inSessionHours(t)) return 900;                                   // the market is shut: nothing changes
+    if (sym) this.active.set(sym, t);
+    for (const [k, at] of this.active) if (t - at > 5000) this.active.delete(k);
+    return Math.max(Market.LIVE_TTL, this.active.size / Market.LIVE_BUDGET);   // a fair rotation within the budget
+  }
 
   /** One quote in the shape the UI needs, with an honest status. `state` is the market clock's verdict (see marketclock.js). */
   async quote(sym, state, fresh = false) {
@@ -276,7 +287,7 @@ export class Market {
     try {
       const hit = this.cache.m.get('lq:' + sym);
       fromCache = !!(hit && hit.until > this.now().getTime());
-      const pending = this.cache.cached('lq:' + sym, this.quoteTtl(), () => this.nse.cm('cm_get_stock_quote', { symbol: sym }));
+      const pending = this.cache.cached('lq:' + sym, this.quoteTtl(sym), () => this.nse.cm('cm_get_stock_quote', { symbol: sym }));
       pending.catch(() => {});   // if the deadline below wins, the request still finishes in the background and fills the cache for the next caller
       q = (((await withDeadline(pending, this.quoteDeadlineMs)) || {}).stock) || null;
     } catch (e) {
@@ -287,12 +298,13 @@ export class Market {
     const row = this.securities.get(sym) || {};
     if (!q || !q.lastTradedPrice) return { sym, name: row.company || null, status: 'unavailable', reason: error || 'NSE has no quote for this symbol', exchange: 'NSE', fetchedAt: Date.now() };
     const price = q.lastTradedPrice, prev = q.preClosePrice, abs = prev != null ? analysis.pyRound(price - prev, 2) : null;
+    if (!stale && inSessionHours(this.now().getTime())) this.ticks.record(sym, price, q.volume, q.latestTimestamp).catch(() => {});   // builds the intraday candles
     const chg = q.perChange != null ? q.perChange : prev ? analysis.pyRound(((price - prev) / prev) * 100, 2) : null;
     const ts = q.latestTimestamp || null, ageMs = ts ? Math.max(0, this.now().getTime() - Date.parse(ts.replace(' ', 'T') + '+05:30')) : null;
     let status = 'closed';
     if (stale) status = 'stale';
     else if (state && state.live) status = ageMs != null && ageMs > 5 * 60 * 1000 ? 'delayed' : 'live';
-    return { sym, name: row.company || null, industry: row.industry || null, exchange: 'NSE', price, prev, abs, chg, volume: q.volume ?? null, valueCr: q.value ?? null,
+    return { sym, name: row.company || null, industry: row.industry || null, exchange: 'NSE', price, prev, abs, chg, open: q.openPrice ?? null, high: q.highPrice ?? null, low: q.lowPrice ?? null, volume: q.volume ?? null, valueCr: q.value ?? null,
       hi52: q.fiftyTwoWeekHigh ?? null, lo52: q.fiftyTwoWeekLow ?? null, ts, ageMs, status, fromCache, fetchedAt: Date.now(), ms: Date.now() - t0, ...(stale ? { reason: error } : {}) };
   }
 
@@ -300,8 +312,39 @@ export class Market {
   async quotes(symbols, state, fresh = false) {
     const seen = new Set(), list = [];
     for (const raw of symbols) { const sym = String(raw || '').trim().toUpperCase(); if (sym && !seen.has(sym)) { seen.add(sym); list.push(sym); } }
+    const nowMs = this.now().getTime(); list.slice(0, 50).forEach((sym) => { if (SYMBOL_RE.test(sym)) this.active.set(sym, nowMs); });   // count them all before any is fetched, so the rotation is even
     const out = await Promise.all(list.slice(0, 50).map((sym) => (SYMBOL_RE.test(sym) ? this.quote(sym, state, fresh) : Promise.resolve({ sym, status: 'unavailable', reason: 'not a valid NSE symbol', exchange: 'NSE', fetchedAt: Date.now() }))));
     return { quotes: out, requested: list.length, truncated: list.length > 50, fetchedAt: Date.now() };
+  }
+
+  /* ---------- the fast live feed: indices, sector indices and the symbols on screen, answered from a one-second cache ---------- */
+  async liveIndices() {
+    const ttl = inSessionHours(this.now().getTime()) ? Market.LIVE_TTL : 600;
+    const live = await this.cache.cached('live:indices', ttl, () => this.nse.cm('cm_get_live_indices', { group: '', nameFilter: '' })), by = {};
+    Object.values(live.indices || {}).forEach((group) => group.forEach((i) => { by[i.indexName.toUpperCase()] = i; }));
+    return by;
+  }
+
+  /** Everything the screens repaint every second (at most 40 stocks). Failures degrade to what is cached. */
+  async liveFeed(symbols) {
+    const t = this.now().getTime(), state = marketState(t, this.live.received ? { received: this.live.received, newest: this.live.newest } : {});
+    const out = { t, market: state, intervalMs: state.live ? 1000 : 30000, indices: [], sectorIndices: [], quotes: [] };
+    try {
+      const by = await this.liveIndices(), row = (lv, name) => ({ name: lv.indexName || name, last: lv.last, prev: lv.previousClose, pct: lv.percChange });
+      out.indices = HEADLINE_INDICES.filter((n) => n in by).map((n) => row(by[n], n));
+      for (const [sec, ix] of SECTOR_INDICES) { const lv = by[ix.toUpperCase()]; if (lv && lv.last) out.sectorIndices.push({ sector: sec, index: lv.indexName || ix, pct: lv.percChange }); }
+    } catch (e) { out.indicesError = String(e.message || e).slice(0, 120); }
+    const listed = [];
+    for (const raw of symbols.slice(0, 40)) { const sym = String(raw || '').trim().toUpperCase(); if (SYMBOL_RE.test(sym) && !listed.includes(sym)) listed.push(sym); }
+    if (listed.length) for (const q of (await this.quotes(listed, state)).quotes) out.quotes.push(Object.fromEntries(['sym', 'price', 'prev', 'abs', 'chg', 'open', 'high', 'low', 'volume', 'valueCr', 'ts', 'ageMs', 'status', 'hi52', 'lo52'].map((k) => [k, q[k] ?? null])));
+    return out;
+  }
+
+  /** One-minute bars recorded from live quotes (see ticks.js). The chart page resamples them to 5m, 15m and 1h. */
+  async intraday(sym) {
+    await this.ticks.flushAll();
+    const bars = await this.ticks.bars(sym);
+    return { sym, bars, from: bars.length ? bars[0][0] : null, to: bars.length ? bars[bars.length - 1][0] : null, source: "recorded from live NSE quotes while MarketLens was open; NSE's servers keep daily history only" };
   }
 
   /* ---------- history for the chart (daily closes; NSE keeps them from 1 Jan 2024) ---------- */
@@ -315,13 +358,14 @@ export class Market {
     const key = 'hist:' + sym, cutoff = isoDay(new Date(this.now().getTime() - days * 86400000));
     let rec = await this.snaps.get(key);
     if (rec && (await this.snaps.age(key)) > 12 * 3600) rec = null;                       // older than half a day: start over
+    if (rec && rec.points.length && rec.points[0].length < 6) rec = null;                 // saved by an older release without open, high and low: fetch again
     const covers = (r) => r && (r.complete || (r.points.length && r.points[0][0] <= cutoff));
     if (!covers(rec)) {
       const points = rec ? [...rec.points] : [];
       let end = rec ? rec.next || '' : '', next = rec ? rec.next || null : null, complete = false, guard = 0;
       while (!complete && guard++ < 16 && (!points.length || points[0][0] > cutoff)) {
         const h = await this.nse.bh('get_stock_history', { symbol: sym, months: 3, endDate: end });
-        const rows = (h.data || []).filter((r) => r.close).map((r) => [r.date, r.close, r.volume ?? null]);
+        const rows = (h.data || []).filter((r) => r.close).map((r) => [r.date, r.close, r.volume ?? null, r.open ?? null, r.high ?? null, r.low ?? null]);
         if (!rows.length) { complete = true; break; }
         points.unshift(...rows);                                                          // older chunks go in front
         next = h.next_end_date || null;

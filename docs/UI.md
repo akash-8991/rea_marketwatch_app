@@ -20,7 +20,7 @@ The layout is fluid and works from a 280 px folded phone to a 4K display, in por
 
 | Width | What changes |
 |---|---|
-| ≤ 340 px | status pill hides (the banner under the bar says the same); search trigger shrinks to an icon |
+| ≤ 340 px | status pill hides (the Live/Closed state is also in the tab title of the pill on wider screens); search trigger shrinks to an icon |
 | ≤ 380 px | smaller gutters and base font, narrower menu |
 | ≤ 640 px | sign-out becomes an icon, index tiles scroll sideways instead of wrapping, tighter cards and table cells |
 | ≤ 860 px | navigation rail becomes a slide-in menu (with the signed-in user at its foot) |
@@ -36,6 +36,27 @@ grid minimums use `min(100%, …)`; charts size to the window height; dialogs an
 `mobile/dev/layout-check.js`, set the window size and run `await __layoutCheck(['#/', '#/markets', '#/screener', '#/options', '#/watchlist', '#/paper', '#/news', '#/updates', '#/quote/INFY'])`.
 It reports sideways page growth, elements poking out of the window, wrapping controls, clipped text, overlapping top-bar items and small tap targets.
 Last run at 280, 320, 390, 667×375, 768, 1024 and 1920 px: no findings (the only reports left are headlines that wrap onto several lines, which is intended).
+
+## Live refresh (every second)
+While the market trades, every screen repaints once a second: the index tiles, the sector heat map and every stock price and change that is on screen (rows scrolled far out of view are
+left out). One small request (`/api/live`) carries all of it; requests never overlap, the page pauses while its tab is hidden, backs off when the server struggles, and slows to every
+30 s when the market is shut (the first request after the open switches it back). A value that changed flashes green (up) or red (down) for a moment (not when the system asks for reduced motion).
+The top banner ("Market open · last refresh…") is gone; the status pill in the top bar carries the state (Live, Market closed, Stale, Delayed, Disconnected) and its tooltip has the detail and the time of the last update.
+The server answers from a one-second cache and spends at most 10 NSE stock-quote calls a second in total, so a long list is refreshed proportionally less often rather than with more requests; the
+home page, Markets, the stock page, the watchlist and Chart analysis all use the same feed.
+
+## Chart analysis
+`#/chart/<SYMBOL>` (also **Charts** in the menu, a **Chart analysis** button on every stock page, and the command palette). Candle sizes: 5 min, 15 min, hourly, daily, weekly, monthly, yearly.
+* **Data**: daily candles come from NSE's daily history (open, high, low, close, volume, from 1 Jan 2024); weekly, monthly and yearly candles are built from them. NSE's servers keep **no intraday
+  history**, so 5 min, 15 min and hourly candles are built from the live prices MarketLens records while it is open (one-minute bars kept for 5 days, aligned to the 9:15 open); a stock the app
+  has not watched during a session has none yet, and the page says so. While the market is live the last candle moves with every price update.
+* **Overlays**: EMA 9/21, SMA 20/50/200, Bollinger bands, Supertrend, VWAP (intraday), support and resistance (swing points clustered by touches), classic pivot points, Fibonacci retracement of the last swing.
+* **Panels**: volume, RSI, MACD (with histogram), stochastic, ADX with +DI and -DI. Drag to pan, + and - to zoom (Ctrl or Cmd with the wheel), arrow keys when the chart has focus; a crosshair tooltip shows open, high, low, close, change, volume and the indicator values.
+* **Technical read**: a verdict (strongly bullish to strongly bearish) from weighted signals across trend (price against EMA 21, SMA 50 and 200, EMA 9 against 21, golden or death cross state, Supertrend, ADX),
+  momentum (RSI, MACD, stochastic, 10-candle change), volatility (Bollinger position), volume (VWAP, high-volume candles) and patterns; every signal is listed with its reason. Key levels, pivots, Fibonacci levels,
+  candlestick patterns (doji, hammer, hanging man, shooting star, inverted hammer, marubozu, engulfing, harami, piercing line, dark cloud cover, morning and evening star, three white soldiers, three black crows)
+  and chart patterns (higher highs and lows or the reverse, double top and bottom, range breakout and breakdown).
+Maths is in `ta.js`, recording in `ticks.py` / `ticks.js`, the page in `chart-view.js`; all are unit-tested.
 
 ## Keyboard
 | Keys | Does |
@@ -61,8 +82,7 @@ Green, red and a muted blue-grey (unchanged) carry direction; every one also has
 ## Watchlist
 Add by symbol (suggestions from the stock list), remove with **Undo**, sort by symbol, price, change ₹, change % or last update (unavailable rows always last), filter
 by positive, negative, unchanged, stale or unavailable, search within the list, refresh one row or all, and choose auto-refresh (1, 5, 15, 30 or 60 s; off pauses it;
-it also pauses while the browser tab is hidden and refreshes the moment you return). NSE itself updates about once a minute, so intervals under 30 s re-read the
-app's own cache and do not multiply traffic to NSE; "Refresh" buttons bypass the cache, but at most once per symbol every 5 seconds. Adds and removes are applied
+it also pauses while the browser tab is hidden and refreshes the moment you return). The default is now 1 s. NSE itself states about one update a minute: the app asks every second (a quote is reused for at most one second server-side, within a fixed budget of NSE calls) and a change shows within about a second of NSE publishing it; "Refresh" buttons bypass the cache, but at most once per symbol every 5 seconds. Adds and removes are applied
 at once and rolled back if NSE rejects the symbol. Lists over 300 rows are windowed (about 40 rows in the page at a time); measured: 1,000 rows took 162 ms to lay
 out, so a plain 50-row list is left as is.
 
@@ -73,7 +93,7 @@ only), 1W, 1M, 3M, 6M, 1Y (the API still accepts 5Y and 10Y, which the strategy 
 a request that is no longer wanted (you switched range) is cancelled.
 
 ## Paper trading
-Four tabs.
+Four tabs, in the same underlined style as the Screener and the stock page.
 * **Portfolio**: value, profit and loss, cash, invested, realised and unrealised result, fees paid; allocation bar; positions (average cost includes the buying fee); trade
   history with CSV download (spreadsheet formulas neutralised); reset with confirmation.
 * **Trade**: order ticket with a live price card, quantity shortcuts (10, 25, 50 percent, max), an itemised cost, and reasons when an order cannot be placed. The fill price
@@ -131,6 +151,6 @@ history are a way to understand the rule, not a forecast, and only 2.8 years of 
 The account is stored in this browser or app only (per signed-in user) under `ml.paper`; clearing the app's storage removes it.
 
 ## Files
-`ui.js` components and toasts · `palette.js` command palette · `dashboard.js` watchlist · `chart.js` price chart · `paper-view.js` paper-trading page · `options-view.js` option strategies tab · `options-lab.js` option maths and catalogue paper trading page ·
+`ui.js` components and toasts · `palette.js` command palette · `dashboard.js` watchlist · `chart.js` price chart · `paper-view.js` paper-trading page · `options-view.js` option strategies tab · `chart-view.js` chart analysis page · `ta.js` technical analysis maths · `live.js` the one-second feed · `options-lab.js` option maths and catalogue paper trading page ·
 `paper.js` account rules · `strategies.js`, `indicators.js` simulator · `pure.js` testable logic (sorting, filtering, windowing, decimation, highlighting) ·
 `lib.js` helpers and API client (timeouts, retries with backoff and jitter, cancellation) · `icons.js` generated icons.

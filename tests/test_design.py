@@ -129,6 +129,30 @@ class StylesheetRules(unittest.TestCase):
         js = (STATIC / "js" / "chart.js").read_text()
         self.assertIn("export const RANGES = [['1D', '1D'], ['1W', '1W'], ['1M', '1M'], ['3M', '3M'], ['6M', '6M'], ['1Y', '1Y']];", js)
 
+    def test_the_top_banner_is_gone_and_the_status_pill_carries_the_state(self):
+        self.assertNotIn('id="banner"', HTML)
+        self.assertIn('id="status-pill"', HTML)
+        app = (STATIC / "js" / "app.js").read_text()
+        self.assertIn("function paintPill", app)
+        self.assertNotIn("prices update about every minute", app)
+
+    def test_the_paper_page_uses_the_shared_underlined_tabs(self):
+        view = (STATIC / "js" / "paper-view.js").read_text()
+        self.assertIn('class="viewtabs"', view)
+        self.assertNotIn("bindTabs", view)
+        self.assertRegex(CSS, r"\.vt \{")
+
+    def test_one_second_feed_and_chart_page_are_wired(self):
+        app = (STATIC / "js" / "app.js").read_text()
+        self.assertIn("import('./live.js')", app)
+        self.assertIn("views.chart", app)
+        self.assertIn('data-r="chart"', HTML)
+        live = (STATIC / "js" / "live.js").read_text()
+        self.assertIn("/api/live?symbols=", live)
+        self.assertRegex(live, r"intervalMs \|\| 1000")
+        dash = (STATIC / "js" / "dashboard.js").read_text()
+        self.assertRegex(dash, r"auto: true, interval: 1,")
+
 
 if __name__ == "__main__":
     unittest.main()

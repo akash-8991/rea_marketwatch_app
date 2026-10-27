@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "marketlens"
-version = "0.7.1"
+version = "0.8.0"
 description = "Local NSE markets dashboard: prices, screener with technical, sentiment and income views, live news, option chain."
 readme = "README.md"
 license = {text = "MIT"}

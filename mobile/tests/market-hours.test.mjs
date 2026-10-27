@@ -132,3 +132,31 @@ test('option chain: contracts stay from the last file, the spot and ATM row go l
   const closed = await get(e, '/api/options?symbol=NIFTY');
   assert.equal(closed.spotLive, undefined); assert.equal(closed.spot, 22600);   // file's own underlying price after the close
 });
+
+test('one-second feed: indices, sectors and the requested stocks, reused inside the second, refetched after it, recorded as intraday bars', async () => {
+  const clock = { t: at('2026-10-26T10:45:00') }, price = { v: 105 }, srv = market({ price, day: '2026-10-26' }), e = mk(srv, clock);
+  const live = await get(e, '/api/live?symbols=AAA,BBB,nope!');
+  assert.equal(live.market.live, true); assert.equal(live.intervalMs, 1000);
+  assert.deepEqual(live.indices.map((i) => i.name), ['NIFTY 50']); assert.equal(live.indices[0].last, 105 * 200);
+  assert.deepEqual(live.quotes.map((q) => q.sym), ['AAA', 'BBB']); assert.equal(live.quotes[0].price, 105); assert.ok('open' in live.quotes[0] && 'high' in live.quotes[0]);
+  assert.equal(srv.tools.cm_get_stock_quote, 2); assert.equal(srv.tools.cm_get_live_indices, 1);
+  await get(e, '/api/live?symbols=AAA,BBB'); assert.equal(srv.tools.cm_get_stock_quote, 2, 'nothing is re-fetched inside the second');
+  price.v = 107; clock.t += 1100;
+  const again = await get(e, '/api/live?symbols=AAA,BBB'); assert.equal(again.quotes[0].price, 107); assert.equal(srv.tools.cm_get_stock_quote, 4); assert.equal(again.indices[0].last, 107 * 200);
+  const id = await get(e, '/api/intraday/AAA'); assert.ok(id.bars.length >= 1); assert.equal(id.bars[id.bars.length - 1][4], 107); assert.match(id.source, /daily history only/);
+  assert.equal((await e.handle('GET', '/api/intraday/!!')).status, 400);
+});
+
+test('one-second feed after the close: slow cadence, no hammering', async () => {
+  const clock = { t: at('2026-10-26T16:30:00') }, srv = market({ price: { v: 105 }, day: '2026-10-26' }), e = mk(srv, clock);
+  const r = await get(e, '/api/live?symbols=AAA'); assert.equal(r.market.live, false); assert.equal(r.intervalMs, 30000);
+  clock.t += 5000; await get(e, '/api/live?symbols=AAA'); assert.equal(srv.tools.cm_get_stock_quote, 1, 'the market is shut: the answer is reused');
+});
+
+test('with many symbols on screen each is refreshed proportionally less often (a fixed budget of upstream calls)', async () => {
+  const clock = { t: at('2026-10-26T10:45:00') }, srv = market({ price: { v: 105 }, day: '2026-10-26' }), e = mk(srv, clock);
+  const syms = Array.from({ length: 30 }, (_, i) => `S${i}`).join(',');
+  await get(e, `/api/live?symbols=${syms}`); assert.equal(srv.tools.cm_get_stock_quote, 30);
+  clock.t += 1500; await get(e, `/api/live?symbols=${syms}`); assert.equal(srv.tools.cm_get_stock_quote, 30, '30 symbols at 10 calls a second: 3 s between refreshes');
+  clock.t += 2000; await get(e, `/api/live?symbols=${syms}`); assert.equal(srv.tools.cm_get_stock_quote, 60);
+});

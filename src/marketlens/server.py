@@ -32,7 +32,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
 MAX_UPLOAD = optiondb.MAX_CSV_BYTES
 LOOPBACK = ("127.0.0.1", "localhost", "::1", "[::1]")
 RID_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
-KNOWN_ROUTES = {"/healthz", "/readyz", "/api/config", "/api/bootstrap", "/api/extras", "/api/sentiment", "/api/search", "/api/options",
+KNOWN_ROUTES = {"/healthz", "/readyz", "/api/config", "/api/bootstrap", "/api/live", "/api/extras", "/api/sentiment", "/api/search", "/api/options",
                 "/api/options/meta", "/api/options/import", "/api/audit", "/api/metrics", "/api/vitals",
                 "/api/auth/status", "/api/auth/me", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/forgot-user-id", "/api/auth/update-credentials"}
 PUBLIC_API = {"/api/auth/status", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/forgot-user-id", "/api/auth/update-credentials"}
@@ -157,6 +157,8 @@ def route_label(path):
         return "/api/quote/:sym"
     if path.startswith("/api/history/"):
         return "/api/history/:sym"
+    if path.startswith("/api/intraday/"):
+        return "/api/intraday/:sym"
     if path.startswith("/api/news/stock/"):
         return "/api/news/stock/:sym"
     if re.fullmatch(r"/api/news/(india|global)", path):
@@ -170,9 +172,11 @@ def classify(method, path):
     """Traffic class used for rate limiting; None means exempt (health probes)."""
     if path in ("/healthz", "/readyz"):
         return None
+    if path == "/api/live":
+        return "live"
     if method == "POST":
         return "auth" if path.startswith("/api/auth/") else "write"
-    if path.startswith(("/api/stock/", "/api/peers/", "/api/quote/", "/api/quotes", "/api/history/", "/api/search", "/api/news/")) or path == "/api/options":
+    if path.startswith(("/api/stock/", "/api/peers/", "/api/quote/", "/api/quotes", "/api/history/", "/api/intraday/", "/api/search", "/api/news/")) or path == "/api/options":
         return "expensive"
     return "read" if path.startswith("/api/") else "static"
 
@@ -493,6 +497,14 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             sym = urllib.parse.unquote(m.group(1)).upper()
             return self._json(market.quote(sym, fresh=bool(qs.get("fresh")))) if market.SYMBOL_RE.match(sym) else self._error(400, "bad symbol")
+        if p == "/api/live":
+            return self._json(market.live_feed([x for x in qs.get("symbols", [""])[0].split(",") if x]))
+        m = re.match(r"^/api/intraday/([^/]+)$", p)
+        if m:
+            sym = urllib.parse.unquote(m.group(1)).upper()
+            if not market.SYMBOL_RE.match(sym):
+                return self._error(400, "bad symbol")
+            return self._json(market.intraday(sym))
         if p == "/api/quotes":
             listed = [x for x in qs.get("symbols", [""])[0].split(",") if x]
             return self._json(market.quotes(listed, fresh=bool(qs.get("fresh")))) if listed else self._error(400, "symbols is required (comma separated, at most 50)")

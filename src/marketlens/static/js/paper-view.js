@@ -2,7 +2,7 @@
  * daily history. Everything here is for learning: no money moves, nothing is sent anywhere, and the account lives only in this browser (per signed-in user).
  * Rules and maths are in paper.js and strategies.js (unit-tested); this file is layout and wiring. */
 import { $, $$, esc, money, signed, cls, arrow, compact, api, icon, store, fmtDate, debounce } from './lib.js';
-import { tabs, bindTabs, buttonClass, statusBadge, alert, emptyCard, skeletonRows, toast, confirmDialog, badge, ago } from './ui.js';
+import { buttonClass, statusBadge, alert, emptyCard, skeletonRows, toast, confirmDialog, badge, ago } from './ui.js';
 import { newAccount, normalize, placeOrder, valuation, sharesFor, OrderError, START_CASH, FEE_PCT } from './paper.js';
 import { STRATEGIES, backtest, compareAll, cleanParams, defaultParams, strategyGroups } from './strategies.js';
 
@@ -28,11 +28,15 @@ export function mount(root, ctx) {
   const tick = () => { clearTimeout(st.timer); if (!st.alive || !document.body.contains(root)) return; st.timer = setTimeout(async () => { if (!document.hidden && st.tab === 'portfolio') { await loadPrices(); if (st.tab === 'portfolio') paintPortfolio(); } tick(); }, 30000); };
 
   /* ---------- shell ---------- */
+  const TABS = [['portfolio', 'Portfolio'], ['trade', 'Trade'], ['lab', 'Stock strategies'], ['options', 'Option strategies']];
   function shell() {
-    root.innerHTML = `<div class="grid gap-3"><div class="flex flex-wrap items-end justify-between gap-3"><div><h1 class="m-0">Paper trading</h1>
+    root.innerHTML = `<div class="grid gap-3"><div><h1 class="m-0">Paper trading</h1>
       <p class="m-0 mt-1 text-sm text-muted-foreground">Practise with ${rupee(START_CASH, 0)} of pretend money at real NSE prices: place paper orders, test stock and technical-analysis strategies on real history, and build option strategies from the real option chain. Learn how they behave before any real money is involved.</p></div>
-      ${tabs([['portfolio', 'Portfolio'], ['trade', 'Trade'], ['lab', 'Stock strategies'], ['options', 'Option strategies']], st.tab, { id: 'paper-tabs', label: 'Paper trading sections' })}</div><div id="paper-body"></div></div>`;
-    bindTabs($('#paper-tabs', root), (t) => { st.tab = t; store.set('ml.paper.tab', t); paintTab(); });
+      <div class="viewtabs" role="tablist" id="paper-tabs" aria-label="Paper trading sections">${TABS.map(([k, l]) => `<button type="button" role="tab" class="vt ${k === st.tab ? 'on' : ''}" aria-selected="${k === st.tab}" tabindex="${k === st.tab ? 0 : -1}" data-tab="${k}">${esc(l)}</button>`).join('')}</div><div id="paper-body"></div></div>`;
+    const list = $('#paper-tabs', root), all = () => [...list.querySelectorAll('[role=tab]')];
+    const pick = (el) => { all().forEach((b) => { const on = b === el; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; }); st.tab = el.dataset.tab; store.set('ml.paper.tab', st.tab); paintTab(); };
+    list.addEventListener('click', (e) => { const b = e.target.closest('[role=tab]'); if (b) pick(b); });
+    list.addEventListener('keydown', (e) => { const t = all(), i = t.indexOf(document.activeElement); const to = { ArrowRight: (i + 1) % t.length, ArrowLeft: (i - 1 + t.length) % t.length, Home: 0, End: t.length - 1 }[e.key]; if (to !== undefined && i >= 0) { e.preventDefault(); t[to].focus(); pick(t[to]); } });
   }
   function paintTab() { ({ portfolio: paintPortfolio, trade: paintTrade, lab: paintLab, options: paintOptionsTab })[st.tab] ? ({ portfolio: paintPortfolio, trade: paintTrade, lab: paintLab, options: paintOptionsTab })[st.tab]() : paintPortfolio(); }
   const go = (tab) => { const btn = $(`#paper-tabs [data-tab="${tab}"]`, root); if (btn) btn.click(); else { st.tab = tab; paintTab(); } };

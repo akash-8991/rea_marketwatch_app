@@ -44,7 +44,7 @@ cannot reach the local server) and **Updating…** independently.
 
 | Decision | Why | Trade-off |
 |---|---|---|
-| Polling every 60 s, not WebSockets/SSE | NSE data arrives per minute at best and upstream is pull-only; a push channel would add reconnect, replay and backpressure code with nothing to push. | Up to 60 s staleness; revisit if a push source appears. |
+| Polling once a second (`/api/live`), not WebSockets/SSE | Upstream is pull-only, so a push channel would only add reconnect, replay and backpressure code. One small request a second, never overlapping, paused when the tab is hidden, answered from a one-second server cache with a fixed budget of 10 NSE stock-quote calls a second (so a long list is refreshed proportionally less often, never more requests). While the market is shut it slows to every 30 s. | A value changes on screen within about a second of NSE publishing it; NSE's own source states about one update a minute, so numbers can repeat between its updates. |
 | SQLite, one file | Open source, in the standard library, ACID, enough for a few thousand snapshots. | Single writer; fine for one user. |
 | No framework or build step | Few moving parts; one `pip install`. Lazy `import()` gives route-level code splitting for the largest view. | Hand-written rendering; no component library. |
 | In-process token buckets keyed by TCP peer | Single instance, no network hop per request. `X-Forwarded-For` is ignored (forgeable). | Not shared across processes; behind a reverse proxy, limit at the proxy. |

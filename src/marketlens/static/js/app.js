@@ -6,40 +6,48 @@ const D = window.MLData;
 const { stocks, bySym } = D;
 startVitals();
 
-  /* ---------- live paint (refresh every 60 s from the local server) ---------- */
-  function paintBanner() {
-    const el = $('#banner'); if (!el) return;
-    const fetched = D.fetchedAt ? new Date(D.fetchedAt) : null, ageMin = fetched ? (Date.now() - fetched.getTime()) / 60000 : null;
-    const asOf = D.asOf ? fmtDate(D.asOf) : '—', at = fetched ? fetched.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '';
+  /* ---------- live paint (the one-second feed in live.js writes the data; this paints it) ---------- */
+  function paintPill() {
+    const pill = $('#status-pill'); if (!pill) return;
+    const fetched = D.fetchedAt ? new Date(D.fetchedAt) : null, ageMin = fetched ? (Date.now() - fetched.getTime()) / 60000 : null, recent = D.liveAt && Date.now() - D.liveAt < 15000;
+    const asOf = D.asOf ? fmtDate(D.asOf) : '—', at = new Date(D.liveAt || D.fetchedAt || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     let state = 'live', msg;
     if (conn.state === 'offline') { state = 'off'; msg = `Disconnected: ${conn.lastError || 'cannot reach the local server'}. Showing the last data received; retrying.`; }
-    else if (D.stale) { state = 'stale'; msg = `Saved NSE snapshot (last session ${asOf}). The live feed is unavailable${D.retryIn ? `; next live attempt in about ${Math.ceil(D.retryIn / 60)} min` : ''}.`; }
+    else if (D.stale && !recent) { state = 'stale'; msg = `Saved NSE snapshot (last session ${asOf}). The live feed is unavailable${D.retryIn ? `; next live attempt in about ${Math.ceil(D.retryIn / 60)} min` : ''}.`; }
     else if (D.market && !D.market.live) { state = 'closed'; msg = `${D.market.label}. Showing the last update, the ${asOf} session.`; }
-    else if (ageMin != null && ageMin > 10) { state = 'delayed'; msg = `Delayed: data was fetched ${Math.round(ageMin)} min ago (NSE session ${asOf}).`; }
-    else msg = D.market ? `Market open · prices update about every minute · last refresh ${at}.` : `Live · NSE session ${asOf} · fetched ${at}.`;
-    if (conn.updating && state !== 'off') msg += ' Updating…';
-    const pill = $('#status-pill');
-    if (pill) { const L = { live: ['Live', 'success', 'circle-dot'], closed: ['Market closed', 'flat', 'circle-dot'], stale: ['Stale', 'warning', 'triangle-alert'], delayed: ['Delayed', 'warning', 'clock'], off: ['Disconnected', 'danger', 'wifi-off'] }[state];
-      pill.className = `pill pill-${L[1]}`; pill.innerHTML = `${icon(L[2], 12)}<span class="pill-text">${L[0]}</span>`; pill.title = msg; }
-    el.className = `banner ${state}`;
-    el.innerHTML = `<span class="dot ${state}" aria-hidden="true"></span><span><span class="state-name">${{ live: 'Live', closed: 'Market closed', stale: 'Stale', delayed: 'Delayed', off: 'Disconnected' }[state]}</span> ${esc(msg)}</span>`;
+    else if (!recent && ageMin != null && ageMin > 10) { state = 'delayed'; msg = `Delayed: data was fetched ${Math.round(ageMin)} min ago (NSE session ${asOf}).`; }
+    else msg = D.market ? `Market open · prices refresh every second · updated ${at}.` : `Live · NSE session ${asOf} · updated ${at}.`;
+    const L = { live: ['Live', 'success', 'circle-dot'], closed: ['Market closed', 'flat', 'circle-dot'], stale: ['Stale', 'warning', 'triangle-alert'], delayed: ['Delayed', 'warning', 'clock'], off: ['Disconnected', 'danger', 'wifi-off'] }[state];
+    const cls2 = `pill pill-${L[1]}`; if (pill.className !== cls2 || pill.dataset.s !== state) { pill.className = cls2; pill.dataset.s = state; pill.innerHTML = `${icon(L[2], 12)}<span class="pill-text">${L[0]}</span>`; }
+    pill.title = msg; pill.setAttribute('aria-label', `${L[0]}. ${msg}`);
   }
+  const paintBanner = paintPill;
+  const put = (el, text, v) => {   // write only what changed, and flash it green or red for a moment
+    if (el.textContent === text) return;
+    const dir = el._v != null && v != null && v !== el._v ? (v > el._v ? 'flash-up' : 'flash-down') : null;
+    el.textContent = text; el._v = v;
+    if (dir && !matchMedia('(prefers-reduced-motion: reduce)').matches) { el.classList.remove('flash-up', 'flash-down'); void el.offsetWidth; el.classList.add(dir); }
+  };
   function paintLive() {
-    $$('[data-px]').forEach((el) => { const s = bySym[el.dataset.px]; if (s) el.textContent = money(s.price); });
+    $$('[data-px]').forEach((el) => { const s = bySym[el.dataset.px]; if (s) put(el, money(s.price), s.price); });
     $$('[data-chg]').forEach((el) => {
       const s = bySym[el.dataset.chg]; if (!s) return;
       const c = chgPct(s);
-      el.textContent = `${arrow(c)} ${Math.abs(c).toFixed(2)}%`;
-      el.className = `${el.dataset.base || ''} ${cls(c)}`.trim();
+      put(el, `${arrow(c)} ${Math.abs(c).toFixed(2)}%`, c);
+      el.className = `${(el.dataset.base || '')} ${cls(c)} ${el.classList.contains('flash-up') ? 'flash-up' : el.classList.contains('flash-down') ? 'flash-down' : ''}`.trim();
     });
-    $$('[data-idx]').forEach((el) => { const ix = D.indices.find((i) => i.id === el.dataset.idx); if (ix) el.textContent = money(ix.last); });
+    $$('[data-idx]').forEach((el) => { const ix = D.indices.find((i) => i.id === el.dataset.idx); if (ix) put(el, money(ix.last), ix.last); });
     $$('[data-idxchg]').forEach((el) => {
       const ix = D.indices.find((i) => i.id === el.dataset.idxchg); if (!ix) return;
       const c = idxChange(ix);
-      el.textContent = `${arrow(c)} ${money(Math.abs(ix.last - ix.prev))} (${Math.abs(c).toFixed(2)}%)`;
+      put(el, `${arrow(c)} ${money(Math.abs(ix.last - ix.prev))} (${Math.abs(c).toFixed(2)}%)`, c);
       el.className = cls(c);
     });
-    paintBanner();
+    $$('[data-sec]').forEach((el) => {
+      const t = (D.sectorIdx || []).find((s) => s.sector === el.dataset.sec); if (!t) return;
+      put(el, `${signed(t.pct)}%`, t.pct); el.parentElement.className = `tile ${cls(t.pct)}-bg`;
+    });
+    paintPill();
   }
 
   /* ---------- small components ---------- */
@@ -125,7 +133,7 @@ startVitals();
           <ul class="list">${updates.slice(5, 9).map((n) => `<li><a href="#/updates/${n.id}">${tint(n.title)}</a></li>`).join('') || '<li class="muted">No further updates.</li>'}</ul>
           <a class="more" href="#/updates">All updates »</a></section>
         <aside class="card"><h2>Sector indices</h2>
-          <div class="heat">${D.sectorIdx.map((s) => `<div class="tile ${cls(s.pct)}-bg" title="${esc(s.index)}"><b>${esc(s.sector)}</b><span>${signed(s.pct)}%</span></div>`).join('') || '<p class="muted">Unavailable.</p>'}</div>
+          <div class="heat">${D.sectorIdx.map((s) => `<div class="tile ${cls(s.pct)}-bg" title="${esc(s.index)}"><b>${esc(s.sector)}</b><span data-sec="${esc(s.sector)}">${signed(s.pct)}%</span></div>`).join('') || '<p class="muted">Unavailable.</p>'}</div>
         </aside>
       </div>
       <div class="grid2">
@@ -322,7 +330,7 @@ startVitals();
   const headSkeleton = '<header class="qhead"><div class="grid gap-2" role="status" aria-label="Loading price"><div class="animate-pulse rounded-md bg-muted" style="height:2rem;width:12rem"></div><div class="animate-pulse rounded-md bg-muted" style="height:2.5rem;width:16rem"></div></div></header>';
   function headHtml(sym, q) {
     const inWl = store.get('ml.watchlist', []).includes(sym);
-    const actions = `<div class="qactions flex flex-wrap items-center gap-2"><button type="button" id="q-refresh" class="${buttonClass({ variant: 'outline' })}" aria-label="Refresh ${esc(sym)} now">${icon('refresh-cw', 16)}Refresh</button>
+    const actions = `<div class="qactions flex flex-wrap items-center gap-2"><button type="button" id="q-refresh" class="${buttonClass({ variant: 'outline' })}" aria-label="Refresh ${esc(sym)} now">${icon('refresh-cw', 16)}Refresh</button><a href="#/chart/${encodeURIComponent(sym)}" class="${buttonClass({ variant: 'outline' })}">${icon('chart-candlestick', 16)}Chart analysis</a>
       <button type="button" id="wl-btn" class="${buttonClass({ variant: inWl ? 'secondary' : 'default' })}" aria-pressed="${inWl}">${icon('star', 16)}${inWl ? 'In watchlist' : 'Add to watchlist'}</button></div>`;
     if (!q || q.status === 'unavailable') {
       return `<header class="qhead"><div><h1>${esc(sym)} <small class="muted">NSE</small></h1>${q && q.name ? `<p class="company">${esc(q.name)}</p>` : ''}
@@ -370,7 +378,7 @@ startVitals();
           } finally { refreshing = false; }
         }
         loadHead();
-        const timer = setInterval(() => { if (!stillHere()) clearInterval(timer); else if (!document.hidden && lastQ && !(lastQ.status === 'closed')) loadHead(); }, 30000);   // cache-served, and only while the tab is visible and the market is trading
+        const timer = setInterval(() => { if (!stillHere()) clearInterval(timer); else if (!document.hidden && lastQ && !(lastQ.status === 'closed')) loadHead(); }, 1000);   // answered from the server's one-second cache, and only while the tab is visible and the market is trading
         let stopChart = () => {};
         import('./chart.js').then((m) => { if (stillHere()) stopChart = m.mount($('#qchart'), { sym }); });
         unmountScreener = () => { clearInterval(timer); stopChart(); };
@@ -438,6 +446,13 @@ startVitals();
     if (tab === 'news') loadStockNews(sym);
   }
 
+  views.chart = (parts) => ({
+    html: '<div id="chart-host"><p class="muted pad">Loading chart analysis…</p></div>',
+    after() {
+      import('./chart-view.js').then((m) => { if (location.hash.startsWith('#/chart')) unmountScreener = m.mount($('#chart-host'), { D, bySym, sym: parts[0] ? decodeURIComponent(parts[0]) : '' }); })
+        .catch((e) => { $('#chart-host').innerHTML = errorState('Could not load chart analysis', e.message, 'chart-retry'); $('#chart-retry')?.addEventListener('click', route); });
+    },
+  });
   views.paper = () => ({
     html: `<h1>Paper trading</h1>${skeleton(5)}`,
     after() {
@@ -499,7 +514,7 @@ startVitals();
     const parts = (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean);
     const name = parts[0] || 'home';
     const v = (views[name] || views.notfound)(parts.slice(1));
-    $('#app').classList.toggle('container--wide', ['screener', 'options', 'markets'].includes(name));   // data-heavy pages use more of a wide screen
+    $('#app').classList.toggle('container--wide', ['screener', 'options', 'markets', 'chart'].includes(name));   // data-heavy pages use more of a wide screen
     $('#app').innerHTML = v.html;
     $$('nav.main a').forEach((a) => a.classList.toggle('on', a.dataset.r === name || (name === 'quote' && a.dataset.r === 'markets')));
     if (v.after) v.after();
@@ -532,12 +547,13 @@ startVitals();
       setTimeout(() => import('./auth.js').then((m) => m.mountAuth(document.getElementById('app'), { usersExist: true })), 500);
     } });
   }
-  onConn(() => paintBanner());
-  setInterval(paintBanner, 30000);
+  onConn(() => paintPill());
+  setInterval(paintPill, 5000);
   autoScrollTables(document.getElementById('app'));
   window.addEventListener('hashchange', route);
   route();
   // refresh quotes every minute (the server caches and falls back to a saved snapshot)
+  import('./live.js').then((m) => m.start({ D, bySym, repaint: () => paintLive() }));   // the one-second feed
   const refreshLoop = () => D.refresh().then(() => { updates = buildUpdates(); paintLive(); }).catch(() => {}).finally(() => setTimeout(refreshLoop, D.refreshing ? 3000 : 60000));   // quick polls while a background refresh runs
   setTimeout(refreshLoop, D.refreshing ? 3000 : 60000);
   // dividend yields and sparklines arrive in the background

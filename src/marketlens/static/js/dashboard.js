@@ -11,7 +11,8 @@ const VALID = /^[A-Za-z0-9&_-]{1,24}$/;
 const LIMIT = 50;
 
 export function mount(root, ctx) {
-  const user = { ...{ sort: 'symbol', dir: 'asc', filter: 'all', auto: true, interval: 15, text: '' }, ...store.get('ml.dash', {}) };
+  const user = { ...{ sort: 'symbol', dir: 'asc', filter: 'all', auto: true, interval: 1, text: '' }, ...store.get('ml.dash', {}) };
+  if (!user.v) { user.v = 2; user.interval = 1; }   // the old default was 15 s: everyone moves to the one-second refresh once
   const saveUser = () => store.set('ml.dash', user);
   const st = { rows: new Map(), loading: false, error: null, refreshedAt: null, timer: 0, tickId: 0, seq: 0, ctl: null, source: 'NSE', marketLabel: '' };
   const wl = () => store.get('ml.watchlist', []);
@@ -133,7 +134,7 @@ export function mount(root, ctx) {
         <label class="grid gap-1 text-xs">Every<select id="dash-int" class="h-9 rounded-md border border-input bg-card px-2 text-sm" ${user.auto ? '' : 'disabled'}>${INTERVALS.map((s) => `<option value="${s}" ${s === user.interval ? 'selected' : ''}>${s} s</option>`).join('')}</select></label>
         <button type="button" id="dash-refresh" class="${buttonClass({ variant: 'outline' })}" ${st.loading ? 'disabled aria-busy="true"' : ''}>${icon('refresh-cw', 16, st.loading ? 'animate-spin' : '')}Refresh all</button>
       </div></div>
-      <p class="m-0 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"><span id="dash-stamp"></span><span>Source: ${esc(st.source)} (updates about once a minute; a short interval re-reads the app’s cache)</span>
+      <p class="m-0 mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"><span id="dash-stamp"></span><span>Source: ${esc(st.source)} (refreshed every second while the market trades, within a fixed budget of NSE requests)</span>
         ${st.marketLabel ? `<span>${esc(st.marketLabel)}</span>` : ''}<span>${sum.total} symbols · <span class="up">${sum.up} up</span> · <span class="down">${sum.down} down</span> · ${sum.flat} unchanged${sum.unavailable ? ` · ${sum.unavailable} unavailable` : ''}</span>${document.hidden ? '<span>Paused while this tab is hidden</span>' : ''}</p>`;
     paintStamp(); wireToolbar();
   }
