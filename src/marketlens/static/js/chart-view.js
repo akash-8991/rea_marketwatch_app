@@ -113,7 +113,11 @@ export function mount(root, { sym: start, bySym }) {
   const marketLive = () => !!(window.MLData && window.MLData.market && window.MLData.market.live);
   async function ensureData() {
     S.ctl?.abort(); S.ctl = new AbortController(); const sig = S.ctl.signal;
-    if (INTRADAY.has(S.tf)) { const r = await api(`/api/intraday/${encodeURIComponent(S.sym)}`, { quiet: true, retries: 1, timeoutMs: 20000, signal: sig }); S.bars = r.bars || []; S.source = r.source; }
+    if (INTRADAY.has(S.tf)) {   // candles from Yahoo Finance (history), then anything newer that this app recorded itself
+      const [y, r] = await Promise.all([api(`/api/candles/${encodeURIComponent(S.sym)}?tf=${S.tf}`, { quiet: true, retries: 0, timeoutMs: 30000, signal: sig }).catch((e) => { if (e.name === 'AbortError') throw e; return { available: false, reason: e.message }; }),
+        api(`/api/intraday/${encodeURIComponent(S.sym)}`, { quiet: true, retries: 0, timeoutMs: 20000, signal: sig }).catch((e) => { if (e.name === 'AbortError') throw e; return { bars: [] }; })]);
+      S.yc = y.available ? y.candles : []; S.ycNote = y.available ? y.source : y.reason; S.bars = r.bars || [];
+    }
     else if (!S.daily.length) { const h = await api(`/api/history/${encodeURIComponent(S.sym)}?range=5Y`, { quiet: true, retries: 1, timeoutMs: 60000, signal: sig }); if (!h.available) throw new Error(h.reason || 'no price history for this symbol'); S.daily = h.points; S.earliest = h.earliest; }
   }
   function build() {
@@ -123,7 +127,10 @@ export function mount(root, { sym: start, bySym }) {
       const row = [t, q.price, q.volume ?? 0, q.open ?? q.price, Math.max(q.high ?? q.price, q.price), Math.min(q.low ?? q.price, q.price)];
       daily = lastD < t ? [...daily, row] : lastD === t ? [...daily.slice(0, -1), row] : daily;
     }
-    S.candles = candlesFor(S.tf, { minuteBars: S.bars, dailyPoints: daily });
+    if (INTRADAY.has(S.tf)) {
+      const base = (S.yc || []).map(([t, o, h, l, c, v]) => ({ t, o, h, l, c, v })), rec = candlesFor(S.tf, { minuteBars: S.bars }), lastT = base.length ? base[base.length - 1].t : -1;
+      S.candles = [...base, ...rec.filter((c) => c.t > lastT)];   // Yahoo's history, plus candles recorded after its last one
+    } else S.candles = candlesFor(S.tf, { minuteBars: S.bars, dailyPoints: daily });
     S.ind = S.candles.length ? indicators(S.candles) : null; S.an = S.candles.length >= 3 ? analyse(S.candles, S.ind, S.tf) : null;
   }
   async function load() {
@@ -140,7 +147,7 @@ export function mount(root, { sym: start, bySym }) {
     const head = $('#ta-head', root), note = $('#ta-note', root);
     if (cs.length < 2) {
       const intr = INTRADAY.has(S.tf);
-      host.innerHTML = alert({ variant: 'default', title: intr ? 'No intraday candles recorded yet' : 'No candles for this symbol', text: intr ? `${isIndex(S.sym) ? 'Index levels are recorded from the live feed while MarketLens is open. ' : ''}NSE’s servers keep daily history only, so MarketLens builds 5-minute, 15-minute and hourly candles from the live prices it sees while it is open (Monday to Friday, 9:15 to 15:30 India time). ${marketLive() ? 'The market is open: keep this page open and the first candles appear within a minute or two.' : 'The market is closed now: candles appear once the app has been open during a session.'} Daily, weekly, monthly and yearly candles are available now.` : 'NSE returned no price history for this symbol.' });
+      host.innerHTML = alert({ variant: 'default', title: intr ? 'No intraday candles available' : 'No candles for this symbol', text: intr ? `NSE’s servers keep daily history only, so intraday candles come from Yahoo Finance${S.ycNote ? ` (${S.ycNote})` : ''}, plus the live prices MarketLens records while it is open. ${marketLive() ? 'The market is open: keep this page open and recorded candles appear within a minute or two.' : 'Try again when the connection is back, or open the page while the market is open.'} Daily, weekly, monthly and yearly candles are available now.` : 'NSE returned no price history for this symbol.' });
       head.textContent = ''; note.textContent = ''; return;
     }
     const n = cs.length; S.count = Math.max(10, Math.min(S.count, n)); S.from = Math.max(0, Math.min(n - S.count, S.from ?? n - S.count));
@@ -209,7 +216,7 @@ export function mount(root, { sym: start, bySym }) {
     // header line and notes
     const c = cs[n - 1], p = cs[n - 2], chg = p ? ((c.c - p.c) / p.c) * 100 : null, tone = chg == null ? '' : chg >= 0 ? 'up' : 'down', live = marketLive() && (INTRADAY.has(S.tf) || S.live);
     head.innerHTML = `<b>${esc(labelOf(S.sym))}</b> · ${esc(TIMEFRAMES.find((t) => t[0] === S.tf)[1])} · <b class="tabular-nums ${tone}">${money(c.c)}</b> ${chg != null ? `<span class="${tone}">${signed(chg)}%</span>` : ''} · ${n} candles${live ? ` · ${badge('Live', { variant: 'success', iconName: 'circle-dot' })}` : ''}`;
-    note.textContent = INTRADAY.has(S.tf) ? `Intraday candles are built from live prices recorded while MarketLens is open (${S.bars.length ? `${S.bars.length} one-minute bars since ${stamp(S.bars[0][0], '5m')}` : 'none yet'}). NSE keeps daily history only.` : `${isIndex(S.sym) ? 'Index history' : 'Daily history'} from NSE since ${esc(fmtDate(S.earliest || cs[0].t))}${S.tf === '1Y' ? '; NSE history starts in January 2024, so there are only a few yearly candles' : ''}.`;
+    note.textContent = INTRADAY.has(S.tf) ? `Intraday candles: ${S.yc && S.yc.length ? `history from ${S.ycNote || 'Yahoo Finance'}` : 'no history source reachable'}${S.bars.length ? `, plus ${S.bars.length} one-minute bars recorded by MarketLens since ${stamp(S.bars[0][0], '5m')}` : ''}. NSE keeps daily history only.` : `${isIndex(S.sym) ? 'Index history' : 'Daily history'} from NSE since ${esc(fmtDate(S.earliest || cs[0].t))}${S.tf === '1Y' ? '; the number of yearly candles is the number of years NSE provides' : ''}.`;
   }
 
   /* ---------- the written read ---------- */

@@ -162,6 +162,11 @@ class StylesheetRules(unittest.TestCase):
         self.assertRegex(CSS, r"\.ta-chip \{[^}]*font-size:\s*\.75rem")
         self.assertRegex(CSS, r"\.ta-pop \{[^}]*position:\s*absolute")
 
+    def test_intraday_timeframes_use_the_candles_endpoint(self):
+        view = (STATIC / "js" / "chart-view.js").read_text()
+        self.assertIn("/api/candles/", view)
+        self.assertIn("S.yc", view)
+
 
 if __name__ == "__main__":
     unittest.main()

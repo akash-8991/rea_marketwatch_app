@@ -33,7 +33,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
     onBlocked: (code) => opts.safeAudit('upstream_blocked', 'nse', `NSE MCP returned HTTP ${code}; all NSE traffic paused for 15 min`, { outcome: 'error', channel: 'system' }) });
   const securities = new Securities({ storage, now, fetchText: async (url) => { const r = await fetchFn(url, { headers: { Accept: 'text/csv' } }); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); },
     audit: (event, detail, outcome) => opts.safeAudit(event, 'system', detail, { outcome, channel: 'system' }) });
-  const market = new Market({ nse, snaps, cache, securities, settings: cfg, now: () => new Date(now()) });
+  const market = new Market({ nse, snaps, cache, securities, settings: { ...cfg, fetchFn }, now: () => new Date(now()) });
   const news = new News({ cache, snaps, fetchFn, enabled: cfg.news, delayMs: cfg.feedDelayMs ?? 200, now: () => new Date(now()) });
   const feed = new OptionFeed({ source: optionSource || new BhavcopySource({ now }), store: opts, now });
   const ready = migrate(storage, { migrations: settings.migrations, current: settings.schemaVersion }).then(() => null, (e) => e);   // data upgrade runs before the first request is served
@@ -223,6 +223,8 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
       m = /^\/api\/quote\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.quote(sym, clockState(), qs.get('fresh') === '1')) : err(400, 'bad symbol'); }
       if (p === '/api/live') return json(await market.liveFeed((qs.get('symbols') || '').split(',').filter(Boolean)));
+      m = /^\/api\/candles\/([^/]+)$/.exec(p);
+      if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.candles(sym, qs.get('tf') || '5m')) : err(400, 'bad symbol'); }
       m = /^\/api\/intraday\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.intraday(sym)) : err(400, 'bad symbol'); }
       if (p === '/api/quotes') { const list = (qs.get('symbols') || '').split(',').filter(Boolean); return list.length ? json(await market.quotes(list, clockState(), qs.get('fresh') === '1')) : err(400, 'symbols is required (comma separated, at most 50)'); }

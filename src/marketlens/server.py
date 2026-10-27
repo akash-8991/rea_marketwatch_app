@@ -159,6 +159,8 @@ def route_label(path):
         return "/api/history/:sym"
     if path.startswith("/api/intraday/"):
         return "/api/intraday/:sym"
+    if path.startswith("/api/candles/"):
+        return "/api/candles/:sym"
     if path.startswith("/api/news/stock/"):
         return "/api/news/stock/:sym"
     if re.fullmatch(r"/api/news/(india|global)", path):
@@ -176,7 +178,7 @@ def classify(method, path):
         return "live"
     if method == "POST":
         return "auth" if path.startswith("/api/auth/") else "write"
-    if path.startswith(("/api/stock/", "/api/peers/", "/api/quote/", "/api/quotes", "/api/history/", "/api/intraday/", "/api/search", "/api/news/")) or path == "/api/options":
+    if path.startswith(("/api/stock/", "/api/peers/", "/api/quote/", "/api/quotes", "/api/history/", "/api/intraday/", "/api/candles/", "/api/search", "/api/news/")) or path == "/api/options":
         return "expensive"
     return "read" if path.startswith("/api/") else "static"
 
@@ -505,6 +507,10 @@ class Handler(BaseHTTPRequestHandler):
             if not market.SYMBOL_RE.match(sym):
                 return self._error(400, "bad symbol")
             return self._json(market.intraday(sym))
+        m = re.match(r"^/api/candles/([^/]+)$", p)
+        if m:
+            sym = urllib.parse.unquote(m.group(1)).upper()
+            return self._json(market.candles(sym, qs.get("tf", ["5m"])[0])) if market.SYMBOL_RE.match(sym) else self._error(400, "bad symbol")
         if p == "/api/quotes":
             listed = [x for x in qs.get("symbols", [""])[0].split(",") if x]
             return self._json(market.quotes(listed, fresh=bool(qs.get("fresh")))) if listed else self._error(400, "symbols is required (comma separated, at most 50)")

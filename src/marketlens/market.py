@@ -5,7 +5,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
-from . import analysis, marketclock, nse, securities, store, ticks
+from . import analysis, marketclock, nse, securities, store, ticks, yahoo
 from .config import settings
 
 SECTOR_MAP = securities.SECTOR_MAP   # symbol -> industry, from NSE's Nifty Total Market list; the same dict is updated in place when the list is refreshed
@@ -541,3 +541,8 @@ def intraday(sym):
     b = ticks.bars(sym)
     return {"sym": sym, "bars": b, "from": b[0][0] if b else None, "to": b[-1][0] if b else None,
             "source": "recorded from live NSE quotes while MarketLens was open; NSE's servers keep daily history only"}
+
+
+def candles(sym, tf):
+    """Intraday candles (5m, 15m, 1h) from Yahoo Finance; see yahoo.py."""
+    return yahoo.candles(sym, tf)

@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from marketlens import config, market, nse, optiondb, ratelimit, store, ticks
+from marketlens import config, market, nse, optiondb, ratelimit, store, ticks, yahoo
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 at = lambda s: datetime.datetime.fromisoformat(s).replace(tzinfo=IST).timestamp()
@@ -153,6 +153,47 @@ class Indices(Base):
         self.assertEqual((q["price"], q["prev"], q["status"]), (105 * 200, 20000, "live"))
         self.assertTrue(any(x["sym"] == "AAA" for x in r["quotes"]))
         self.assertEqual(market.intraday("IDX_NIFTY_50")["bars"][-1][4], 105 * 200)
+
+
+class IntradayCandles(Base):
+    DOC = {"chart": {"result": [{"timestamp": [1000, 1300, 1600, 1900], "indicators": {"quote": [{"open": [1, 2, None, 4], "high": [2, 3, 4, 5], "low": [0.5, 1.5, 2, 3], "close": [1.5, 2.5, 3, 4.5], "volume": [10, None, 5, 7]}]}}], "error": None}}
+
+    def test_yahoo_answers_are_parsed_and_rows_with_gaps_dropped(self):
+        self.assertEqual(yahoo.parse(self.DOC), [[1000, 1, 2, 0.5, 1.5, 10], [1300, 2, 3, 1.5, 2.5, 0], [1900, 4, 5, 3, 4.5, 7]])
+        with self.assertRaises(RuntimeError):
+            yahoo.parse({"chart": {"result": None, "error": {"description": "No data found"}}})
+
+    def test_tickers_for_stocks_and_indices(self):
+        self.assertEqual(yahoo.ticker("RELIANCE"), "RELIANCE.NS")
+        self.assertEqual(yahoo.ticker("M&M"), "M&M.NS")
+        self.assertEqual(yahoo.ticker("IDX_NIFTY_BANK"), "^NSEBANK")
+        self.assertIsNone(yahoo.ticker("IDX_SOMETHING_ELSE"))
+
+    def test_candles_are_cached_and_failures_degrade_with_a_reason(self):
+        calls = []
+        orig = yahoo._fetch
+        yahoo._fetch = lambda tk, i, r: calls.append((tk, i, r)) or [[1, 1, 2, 0.5, 1.5, 3]]
+        self.addCleanup(setattr, yahoo, "_fetch", orig)
+        a = market.candles("AAA", "15m")
+        self.assertTrue(a["available"])
+        self.assertEqual(calls, [("AAA.NS", "15m", "60d")])
+        market.candles("AAA", "15m")
+        self.assertEqual(len(calls), 1, "cached for a minute")
+        self.assertEqual(market.candles("AAA", "1h")["candles"], [[1, 1, 2, 0.5, 1.5, 3]])
+        self.assertEqual(calls[-1][1:], ("60m", "730d"))
+        self.assertFalse(market.candles("AAA", "1m")["available"])
+        self.assertIn("no intraday source", market.candles("IDX_NOPE", "5m")["reason"])
+        def boom(*a):
+            raise OSError("down")
+        yahoo._fetch = boom
+        r = market.candles("BBB", "5m")
+        self.assertFalse(r["available"])
+        self.assertIn("did not answer", r["reason"])
+        config.settings.offline = True
+        try:
+            self.assertIn("offline", market.candles("CCC", "5m")["reason"])
+        finally:
+            config.settings.offline = False
 
 
 class HistoryOhlc(Base):

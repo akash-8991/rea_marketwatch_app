@@ -3,6 +3,7 @@ import * as analysis from './analysis.js';
 import { SECTOR_INDICES } from './sectors.js';
 import { inSessionHours, marketState } from './marketclock.js';
 import { Ticks } from './ticks.js';
+import { fetchCandles } from './yahoo.js';
 export const HEADLINE_INDICES = ['NIFTY 50', 'NIFTY BANK', 'NIFTY NEXT 50', 'NIFTY MIDCAP 100'];
 export const INDEX_PREFIX = 'IDX_';
 /** The symbol-shaped key the chart page uses for an index: 'NIFTY 50' -> 'IDX_NIFTY_50'. */
@@ -32,7 +33,7 @@ export function ttmDividend(actions, today = new Date()) {
 
 export class Market {
   constructor({ nse, snaps, cache, securities, settings = {}, now = () => new Date() }) {
-    Object.assign(this, { nse, snaps, cache, securities, now });
+    Object.assign(this, { nse, snaps, cache, securities, now, fetchFn: settings.fetchFn || null, offline: !!settings.offline });
     this.universeSize = settings.universeSize || 60;
     this.extrasJob = { state: 'idle', done: 0, total: 0 };
     this.freshAt = new Map();
@@ -349,6 +350,12 @@ export class Market {
     } catch (e) { /* the quotes below still answer */ }
     if (listed.length) for (const q of (await this.quotes(listed, state)).quotes) out.quotes.push(Object.fromEntries(['sym', 'price', 'prev', 'abs', 'chg', 'open', 'high', 'low', 'volume', 'valueCr', 'ts', 'ageMs', 'status', 'hi52', 'lo52'].map((k) => [k, q[k] ?? null])));
     return out;
+  }
+
+  /** Intraday candles (5m, 15m, 1h) from Yahoo Finance; see yahoo.js. */
+  async candles(sym, tf) {
+    if (!this.fetchFn) return { sym, tf, available: false, candles: [], reason: 'no network access' };
+    return fetchCandles({ fetchFn: this.fetchFn, sym, tf, offline: this.offline, cache: this.cache, ttl: inSessionHours(this.now().getTime()) ? 60 : 900 });
   }
 
   /** One-minute bars recorded from live quotes (see ticks.js). The chart page resamples them to 5m, 15m and 1h. */

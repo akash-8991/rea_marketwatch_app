@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import * as ta from '../../src/marketlens/static/js/ta.js';
 import { applyFeed } from '../../src/marketlens/static/js/pure.js';
 import { Ticks } from '../engine/ticks.js';
+import { parse, ticker, fetchCandles } from '../engine/yahoo.js';
 import { MemoryStorage, Snapshots } from '../engine/storage.js';
 
 const day = (i) => new Date(Date.UTC(2025, 0, 1) + i * 86400000).toISOString().slice(0, 10);
@@ -100,4 +101,19 @@ test('the recorder folds ticks into one-minute bars, ignores repeats, survives a
   const bars = await k.bars('AAA'); assert.equal(bars.length, 2); assert.deepEqual(bars[0].slice(1), [100, 103, 99, 99, 600]); assert.deepEqual(bars[1].slice(1), [101, 101, 101, 101, 100]);
   assert.equal(bars[0][0], Date.parse('2026-10-26T10:00:00+05:30') / 1000);
   await k.flushAll(); const k2 = new Ticks({ snaps, now: () => clock.t }); assert.deepEqual(await k2.bars('AAA'), bars);
+});
+
+test('Yahoo intraday candles: parsed, mapped to tickers, cached, and failures say why', async () => {
+  const doc = { chart: { result: [{ timestamp: [1000, 1300, 1600], indicators: { quote: [{ open: [1, 2, null], high: [2, 3, 4], low: [0.5, 1.5, 2], close: [1.5, 2.5, 3], volume: [10, null, 5] }] } }] } };
+  assert.deepEqual(parse(doc), [[1000, 1, 2, 0.5, 1.5, 10], [1300, 2, 3, 1.5, 2.5, 0]]);
+  assert.throws(() => parse({ chart: { result: null, error: { description: 'No data found' } } }), /No data found/);
+  assert.equal(ticker('RELIANCE'), 'RELIANCE.NS'); assert.equal(ticker('IDX_NIFTY_BANK'), '^NSEBANK'); assert.equal(ticker('IDX_OTHER'), null);
+  const urls = [], cache = { m: new Map(), async cached(k, ttl, fn) { if (!this.m.has(k)) this.m.set(k, await fn()); return this.m.get(k); } };
+  const fetchFn = async (u) => { urls.push(u); return { ok: true, json: async () => doc }; };
+  const a = await fetchCandles({ fetchFn, sym: 'AAA', tf: '1h', cache, ttl: 60 }); assert.equal(a.available, true); assert.match(urls[0], /AAA\.NS\?interval=60m&range=730d/);
+  await fetchCandles({ fetchFn, sym: 'AAA', tf: '1h', cache, ttl: 60 }); assert.equal(urls.length, 1);
+  assert.equal((await fetchCandles({ fetchFn, sym: 'AAA', tf: '2m', cache, ttl: 60 })).available, false);
+  assert.match((await fetchCandles({ fetchFn, sym: 'IDX_X', tf: '5m', cache, ttl: 60 })).reason, /no intraday source/);
+  assert.match((await fetchCandles({ fetchFn, sym: 'AAA', tf: '5m', cache, ttl: 60, offline: true })).reason, /offline/);
+  const bad = await fetchCandles({ fetchFn: async () => ({ ok: false, status: 429 }), sym: 'ZZZ', tf: '5m', cache, ttl: 60 }); assert.equal(bad.available, false); assert.match(bad.reason, /did not answer/);
 });

@@ -48,16 +48,17 @@ home page, Markets, the stock page, the watchlist and Chart analysis all use the
 ## Chart analysis
 `#/chart/<SYMBOL or index key>` (also **Charts** in the menu, a **Chart analysis** button on every stock page, and the command palette). Candle sizes: 5 min, 15 min, hourly, daily, weekly, monthly, yearly, chosen with the same underlined tabs as the other pages.
 * **Picker**: one searchable list for **stocks and indices** (a button showing the current choice opens a list with a search box; empty it shows recent choices, the main indices and the most traded stocks; typing filters indices and searches stocks; arrow keys, Enter and Escape work; indices carry an Index tag). An index is addressed as `IDX_<NAME>` (for example `IDX_NIFTY_BANK`), so `#/chart/IDX_NIFTY_50` opens Nifty 50. Index daily history comes from NSE's index history (up to 12 months a call); index intraday candles are recorded from the live feed like stocks (headline and sector indices always, others while their chart is open).
-* **Data**: daily candles come from NSE's daily history (open, high, low, close, volume, from 1 Jan 2024); weekly, monthly and yearly candles are built from them. NSE's servers keep **no intraday
-  history**, so 5 min, 15 min and hourly candles are built from the live prices MarketLens records while it is open (one-minute bars kept for 5 days, aligned to the 9:15 open); a stock the app
-  has not watched during a session has none yet, and the page says so. While the market is live the last candle moves with every price update.
+* **Data**: daily candles come from NSE's daily history (open, high, low, close, volume, as far back as NSE provides); weekly, monthly and yearly candles are built from them. NSE's servers keep **no intraday
+  history**, so 5 min, 15 min and hourly candles come from **Yahoo Finance's public chart endpoint** (the provider the news headlines already use; `SYMBOL.NS` for stocks and a Yahoo ticker for about 20 NSE indices: 30 days of 5-minute,
+  60 days of 15-minute and about two years of hourly candles, aligned to the 9:15 open, possibly a few minutes behind the exchange), joined to the one-minute bars MarketLens records itself while it is open (kept 5 days)
+  for anything newer. If Yahoo cannot be reached, offline mode is on, or an index has no Yahoo ticker, only the recorded bars are used and the page says so. While the market is live the last candle moves with every price update.
 * **Overlays and panels** are small toggle chips in two labelled rows (Overlays, Panels), tight on desktop and larger on touch screens. Overlays: EMA 9/21, SMA 20/50/200, Bollinger bands, Supertrend, VWAP (intraday), support and resistance (swing points clustered by touches), classic pivot points, Fibonacci retracement of the last swing.
 * **Panels**: volume, RSI, MACD (with histogram), stochastic, ADX with +DI and -DI. Drag to pan, + and - to zoom (Ctrl or Cmd with the wheel), arrow keys when the chart has focus; a crosshair tooltip shows open, high, low, close, change, volume and the indicator values.
 * **Technical read**: a verdict (strongly bullish to strongly bearish) from weighted signals across trend (price against EMA 21, SMA 50 and 200, EMA 9 against 21, golden or death cross state, Supertrend, ADX),
   momentum (RSI, MACD, stochastic, 10-candle change), volatility (Bollinger position), volume (VWAP, high-volume candles) and patterns; every signal is listed with its reason. Key levels, pivots, Fibonacci levels,
   candlestick patterns (doji, hammer, hanging man, shooting star, inverted hammer, marubozu, engulfing, harami, piercing line, dark cloud cover, morning and evening star, three white soldiers, three black crows)
   and chart patterns (higher highs and lows or the reverse, double top and bottom, range breakout and breakdown).
-Maths is in `ta.js`, recording in `ticks.py` / `ticks.js`, the page in `chart-view.js`; all are unit-tested.
+Maths is in `ta.js`, intraday history in `yahoo.py` / `yahoo.js`, recording in `ticks.py` / `ticks.js`, the page in `chart-view.js`; all are unit-tested.
 
 ## Keyboard
 | Keys | Does |
