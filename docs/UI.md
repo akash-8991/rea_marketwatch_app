@@ -91,7 +91,7 @@ out, so a plain 50-row list is left as is.
 ## Stock page
 The price header comes from one lean request (`/api/quote/<symbol>`): company, industry, exchange, price, change in ₹ and %, last-trade time and its age, source, status
 badge, refresh and watchlist buttons. The chart and the detail tabs load independently below it. Chart ranges: 1D (honestly unavailable: NSE's servers have daily data
-only), 1W, 1M, 3M, 6M, 1Y (the API still accepts 5Y and 10Y, which the strategy lab uses for all of NSE's history; a saved 5Y or 10Y choice from an older version falls back to 3M). NSE's history starts on 1 January 2024. Each range is fetched once, cached, and
+only), 1W, 1M, 3M, 6M, 1Y (the API still accepts 5Y and 10Y, which the strategy lab uses for all of NSE's history; a saved 5Y or 10Y choice from an older version falls back to 3M). NSE's daily history goes back as far as the data source returns (several years for most stocks). Each range is fetched once, cached, and
 a request that is no longer wanted (you switched range) is cancelled.
 
 ## Paper trading

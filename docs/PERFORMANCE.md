@@ -44,7 +44,7 @@ is committed (13 KB, 3 KB compressed). A React migration remains possible; the t
 | Tool call on one warm session that reaches the right backend | 17 of 40 (**43%**); latency median 137 ms, p95 361 ms |
 | Expected attempts per call, and expected time at the median | 2.35 attempts, about 320 ms |
 | Bulk quote for 50 stocks | one call, about 50 ms when it lands |
-| Daily history depth | starts 2024-01-01 (694 trading days for one stock; 13 calls, about 8.6 s to fetch all) |
+| Daily history depth | measured at release 0.1: from 2024-01-01 (694 trading days, 13 calls, about 8.6 s). Checked again on 2026-10-27 against the live MCP: about five years for stocks (since 2021) and since 2024 for Nifty 50; the app takes whatever NSE returns |
 | Live bulk tool (`cm_get_equity_stocks`) | returns an arbitrary 500 of the market; only 7 of the 50 most traded were in it, so it cannot replace per-symbol live quotes |
 | NSE's own refresh rate | about once a minute (stated by the tool). The page now re-checks every second, so a change shows within about a second of NSE publishing it; between NSE's updates the numbers repeat |
 | Option chain | NSE's live API is bot-protected and is not used; the published end-of-day file is |
