@@ -37,7 +37,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
   const news = new News({ cache, snaps, fetchFn, enabled: cfg.news, delayMs: cfg.feedDelayMs ?? 200, now: () => new Date(now()) });
   const feed = new OptionFeed({ source: optionSource || new BhavcopySource({ now }), store: opts, now });
   const ready = migrate(storage, { migrations: settings.migrations, current: settings.schemaVersion }).then(() => null, (e) => e);   // data upgrade runs before the first request is served
-  if (!cfg.offline && settings.refreshList !== false) ready.then((bad) => { if (!bad) securities.load().then(() => securities.refresh()).catch(() => {}); });   // the saved list first, then a weekly refresh in the background
+  if (!cfg.offline && settings.refreshList !== false) ready.then((bad) => { if (!bad) securities.load().then(() => securities.refresh()).then(() => securities.refreshListed()).catch(() => {}); });   // the saved list first, then a weekly refresh in the background
   else ready.then((bad) => { if (!bad) securities.load().catch(() => {}); });
   const metrics = new Metrics();
   const started = now();
@@ -222,6 +222,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
       if (p === '/api/search') return json(await market.search(qs.get('q') || ''));
       m = /^\/api\/quote\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.quote(sym, clockState(), qs.get('fresh') === '1')) : err(400, 'bad symbol'); }
+      if (p === '/api/listings') return json(await market.listings(Math.max(1, Math.min(365, parseInt(qs.get('days') || '60', 10) || 60))));
       if (p === '/api/live') return json(await market.liveFeed((qs.get('symbols') || '').split(',').filter(Boolean)));
       m = /^\/api\/candles\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.candles(sym, qs.get('tf') || '5m')) : err(400, 'bad symbol'); }

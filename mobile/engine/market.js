@@ -216,7 +216,9 @@ export class Market {
     const local = Object.entries(await this.knownSymbols()).filter(([k]) => k.includes(q)).map(([, v]) => v);
     local.sort((a, b) => (!a.symbol.startsWith(q) - !b.symbol.startsWith(q)) || a.symbol.localeCompare(b.symbol));
     let results = local.slice(0, 10).map((v) => ({ ...v, source: 'local' })), note = '';
-    const have = new Set(results.map((r) => r.symbol));
+    let have = new Set(results.map((r) => r.symbol));
+    results = results.concat(this.securities.searchSymbols(q).filter((h) => !have.has(h.symbol)).slice(0, 6).map((h) => ({ symbol: h.symbol, name: h.name, last_close: null, pct_change: null, last_date: null, source: 'listed' })));   // any NSE-listed equity, new listings included
+    have = new Set(results.map((r) => r.symbol));
     results = results.concat(this.securities.searchNames(raw).filter((h) => !have.has(h.symbol)).slice(0, 6).map((h) => ({ symbol: h.symbol, name: h.name, last_close: null, pct_change: null, last_date: null, source: 'list' })));
     if (this.nse.available()) {
       try {
@@ -252,6 +254,7 @@ export class Market {
   async peers(sym, limit = 10) {
     const row = this.securities.get(sym);
     if (!row) return { sym, company: null, industry: null, count: 0, peers: [], self: null };
+    if (row.industry === 'Unclassified') return { sym, company: row.company, industry: row.industry, count: 0, peers: [], self: null, stale: false, unclassified: true };   // listed on NSE but not in the Nifty Total Market list: no industry, no peer group
     const members = this.securities.members(row.industry), out = { sym, company: row.company, industry: row.industry, count: members.length, peers: [], self: null, stale: false };
     let ranked;
     try { ranked = await this.cache.cached('peers-rank:' + row.industry, 1800, () => this.rankIndustry(members)); } catch (e) { ranked = [...members].sort(); out.stale = true; }
@@ -273,6 +276,7 @@ export class Market {
 
   /* ---------- lean quotes (one NSE call each, coalesced and cached) ---------- */
   static LIVE_TTL = 1;       // seconds a live quote may be reused while the market trades: the feed asks again every second
+  static FEED_MS = 100;      // how often the page asks for the feed while the market trades (answered from memory; NSE is asked far less often, see below)
   static LIVE_BUDGET = 10;   // at most this many NSE stock-quote calls per second in total; with more symbols on screen each is refreshed proportionally less often
   quoteTtl(sym) {
     const t = this.now().getTime();
@@ -332,7 +336,7 @@ export class Market {
   /** Everything the screens repaint every second (at most 40 stocks). Failures degrade to what is cached. */
   async liveFeed(symbols) {
     const t = this.now().getTime(), state = marketState(t, this.live.received ? { received: this.live.received, newest: this.live.newest } : {});
-    const out = { t, market: state, intervalMs: state.live ? 1000 : 30000, indices: [], sectorIndices: [], quotes: [] };
+    const out = { t, market: state, intervalMs: state.live ? Market.FEED_MS : 30000, indices: [], sectorIndices: [], quotes: [] };
     try {
       const by = await this.liveIndices(), row = (lv, name) => ({ name: lv.indexName || name, last: lv.last, prev: lv.previousClose, pct: lv.percChange });
       out.indices = HEADLINE_INDICES.filter((n) => n in by).map((n) => row(by[n], n));
@@ -350,6 +354,12 @@ export class Market {
     } catch (e) { /* the quotes below still answer */ }
     if (listed.length) for (const q of (await this.quotes(listed, state)).quotes) out.quotes.push(Object.fromEntries(['sym', 'price', 'prev', 'abs', 'chg', 'open', 'high', 'low', 'volume', 'valueCr', 'ts', 'ageMs', 'status', 'hi52', 'lo52'].map((k) => [k, q[k] ?? null])));
     return out;
+  }
+
+  /** Recently listed (and about to list) NSE equities, newest first, for the New on NSE card. */
+  async listings(days = 60) {
+    if (this.securities.dueListed()) this.securities.refreshListed().catch(() => {});   // on demand too, in the background: the answer below is never delayed by it
+    return { days, total: this.securities.listed.size, recent: this.securities.newListings(days).slice(0, 60) };
   }
 
   /** Intraday candles (5m, 15m, 1h) from Yahoo Finance; see yahoo.js. */

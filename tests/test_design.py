@@ -149,9 +149,11 @@ class StylesheetRules(unittest.TestCase):
         self.assertIn('data-r="chart"', HTML)
         live = (STATIC / "js" / "live.js").read_text()
         self.assertIn("/api/live?symbols=", live)
-        self.assertRegex(live, r"intervalMs \|\| 1000")
+        self.assertRegex(live, r"intervalMs \|\| FAST_MS")
+        self.assertRegex(live, r"FAST_MS = 100")
         dash = (STATIC / "js" / "dashboard.js").read_text()
         self.assertRegex(dash, r"auto: true, interval: 1,")
+        self.assertIn("MLLive.onFeed", dash)
 
     def test_chart_page_has_the_shared_tabs_a_combobox_and_compact_chips(self):
         view = (STATIC / "js" / "chart-view.js").read_text()
@@ -166,6 +168,12 @@ class StylesheetRules(unittest.TestCase):
         view = (STATIC / "js" / "chart-view.js").read_text()
         self.assertIn("/api/candles/", view)
         self.assertIn("S.yc", view)
+
+    def test_new_listings_card_is_on_the_home_page(self):
+        app = (STATIC / "js" / "app.js").read_text()
+        self.assertIn('id="new-listings"', app)
+        self.assertIn("import('./listings.js')", app)
+        self.assertIn("/api/listings", (STATIC / "js" / "listings.js").read_text())
 
 
 if __name__ == "__main__":

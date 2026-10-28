@@ -146,8 +146,9 @@ startVitals();
           <table class="tbl"><thead><tr><th>Stock</th><th class="num">Price</th><th class="num">Change</th><th>1M</th></tr></thead>
           <tbody>${bySort((a, b) => b.valueCr - a.valueCr).slice(0, 6).map((s) => `<tr><td>${symLink(s)}</td><td class="num" data-px="${s.sym}"></td><td class="num" data-chg="${s.sym}"></td><td>${sparkline(s.spark)}</td></tr>`).join('')}</tbody></table>
           ${D.extrasReady ? '' : '<p class="muted">1-month sparklines load in the background.</p>'}</section>
+        <section class="card" id="new-listings" style="grid-column:1/-1"></section>
       </div>`,
-      after() { wireTabs(); },
+      after() { wireTabs(); import('./listings.js').then((m) => { if (location.hash === '' || location.hash === '#/') { const un = m.mount($('#new-listings')); const prev = unmountScreener; unmountScreener = () => { un(); prev && prev(); }; } }).catch(() => {}); },
     };
   };
 

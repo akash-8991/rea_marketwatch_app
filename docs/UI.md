@@ -37,13 +37,16 @@ grid minimums use `min(100%, …)`; charts size to the window height; dialogs an
 It reports sideways page growth, elements poking out of the window, wrapping controls, clipped text, overlapping top-bar items and small tap targets.
 Last run at 280, 320, 390, 667×375, 768, 1024 and 1920 px: no findings (the only reports left are headlines that wrap onto several lines, which is intended).
 
-## Live refresh (every second)
-While the market trades, every screen repaints once a second: the index tiles, the sector heat map and every stock price and change that is on screen (rows scrolled far out of view are
+## Live refresh (every 100 ms)
+While the market trades, every screen repaints within 100 ms of new data: the index tiles, the sector heat map and every stock price and change that is on screen (rows scrolled far out of view are
 left out). One small request (`/api/live`) carries all of it; requests never overlap, the page pauses while its tab is hidden, backs off when the server struggles, and slows to every
 30 s when the market is shut (the first request after the open switches it back). A value that changed flashes green (up) or red (down) for a moment (not when the system asks for reduced motion).
 The top banner ("Market open · last refresh…") is gone; the status pill in the top bar carries the state (Live, Market closed, Stale, Delayed, Disconnected) and its tooltip has the detail and the time of the last update.
-The server answers from a one-second cache and spends at most 10 NSE stock-quote calls a second in total, so a long list is refreshed proportionally less often rather than with more requests; the
+The page asks the server every 100 ms and repaints only what changed; the server answers from memory, reuses an NSE quote for up to a second and spends at most 10 NSE stock-quote calls a second in total, so a long list is refreshed proportionally less often rather than with more requests; the
 home page, Markets, the stock page, the watchlist and Chart analysis all use the same feed.
+
+## New on NSE
+A card at the bottom of the home page lists equities that listed in the last 45 days and ones listing within a week (newest first, with listing date, "Lists tomorrow / Listed today / N days ago", and a live price and change). It is built from NSE's own list of every listed equity (`EQUITY_L.csv`, about 2,600 stocks with listing dates), downloaded every 6 hours and kept in the database, so a company that listed today is found by search, opens a stock page and appears here without waiting for NSE Indices to add it to the Nifty Total Market list (which has about 750 stocks and changes only at index rebalancing). Such a stock has the industry "Unclassified": no sector tile and no peer group until the index includes it. The desktop package ships a snapshot as the starting point; the phone app downloads it at first start and keeps it.
 
 ## Chart analysis
 `#/chart/<SYMBOL or index key>` (also **Charts** in the menu, a **Chart analysis** button on every stock page, and the command palette). Candle sizes: 5 min, 15 min, hourly, daily, weekly, monthly, yearly, chosen with the same underlined tabs as the other pages.
@@ -84,7 +87,7 @@ Green, red and a muted blue-grey (unchanged) carry direction; every one also has
 ## Watchlist
 Add by symbol (suggestions from the stock list), remove with **Undo**, sort by symbol, price, change ₹, change % or last update (unavailable rows always last), filter
 by positive, negative, unchanged, stale or unavailable, search within the list, refresh one row or all, and choose auto-refresh (1, 5, 15, 30 or 60 s; off pauses it;
-it also pauses while the browser tab is hidden and refreshes the moment you return). The default is now 1 s. NSE itself states about one update a minute: the app asks every second (a quote is reused for at most one second server-side, within a fixed budget of NSE calls) and a change shows within about a second of NSE publishing it; "Refresh" buttons bypass the cache, but at most once per symbol every 5 seconds. Adds and removes are applied
+it also pauses while the browser tab is hidden and refreshes the moment you return). Rows are also updated in place by the live feed (every 100 ms, only when a row's numbers changed). NSE itself states about one update a minute: the app asks every 100 ms, an NSE quote is reused for at most one second server-side (within a fixed budget of NSE calls), so a change shows within about a second of NSE publishing it; "Refresh" buttons bypass the cache, but at most once per symbol every 5 seconds. Adds and removes are applied
 at once and rolled back if NSE rejects the symbol. Lists over 300 rows are windowed (about 40 rows in the page at a time); measured: 1,000 rows took 162 ms to lay
 out, so a plain 50-row list is left as is.
 
@@ -153,6 +156,6 @@ history are a way to understand the rule, not a forecast, and only 2.8 years of 
 The account is stored in this browser or app only (per signed-in user) under `ml.paper`; clearing the app's storage removes it.
 
 ## Files
-`ui.js` components and toasts · `palette.js` command palette · `dashboard.js` watchlist · `chart.js` price chart · `paper-view.js` paper-trading page · `options-view.js` option strategies tab · `chart-view.js` chart analysis page · `ta.js` technical analysis maths · `live.js` the one-second feed · `options-lab.js` option maths and catalogue paper trading page ·
+`ui.js` components and toasts · `palette.js` command palette · `dashboard.js` watchlist · `chart.js` price chart · `paper-view.js` paper-trading page · `options-view.js` option strategies tab · `listings.js` New on NSE card · `chart-view.js` chart analysis page · `ta.js` technical analysis maths · `live.js` the one-second feed · `options-lab.js` option maths and catalogue paper trading page ·
 `paper.js` account rules · `strategies.js`, `indicators.js` simulator · `pure.js` testable logic (sorting, filtering, windowing, decimation, highlighting) ·
 `lib.js` helpers and API client (timeouts, retries with backoff and jitter, cancellation) · `icons.js` generated icons.

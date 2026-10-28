@@ -62,7 +62,7 @@ def main(argv=None):
     print(f"  data folder : {config.settings.data_dir}")
     print(f"  NSE data    : {'offline (saved snapshots only)' if config.settings.offline else 'live, fetched on demand and cached'}")
     print(f"  news        : {'off' if not config.settings.news else 'Yahoo Finance + Google News RSS'}")
-    print(f"  stock list  : NSE Nifty Total Market constituents ({len(securities.ROWS)} stocks), refreshed weekly unless offline")
+    print(f"  stock list  : NSE Nifty Total Market constituents ({len(securities.ROWS)} stocks, weekly) + all NSE-listed equities ({len(securities.LISTED)}, every 6 hours), unless offline")
     print(f"  accounts    : {'sign-in required (--no-login to turn off)' if config.settings.require_login else 'off (--no-login): anyone who can open the page can use it'}")
     print(f"  option chain: inbox {config.inbox_dir()} scanned every {config.settings.option_interval}s; "
           f"{'endpoint configured' if config.settings.fo_url else 'no MCP endpoint (see --fo-mcp-url)'}")

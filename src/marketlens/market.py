@@ -236,6 +236,8 @@ def search(q):
     local = [v for k, v in known_symbols().items() if q in k]
     local.sort(key=lambda v: (not v["symbol"].startswith(q), v["symbol"]))
     results = [dict(v, source="local") for v in local[:10]]
+    have = {r["symbol"] for r in results}
+    results += [dict(symbol=h["symbol"], name=h["name"], last_close=None, pct_change=None, last_date=None, source="listed") for h in securities.search_symbols(q) if h["symbol"] not in have][:6]   # any NSE-listed equity, new listings included
     seen_names = {r["symbol"] for r in results}
     results += [dict(symbol=h["symbol"], name=h["name"], last_close=None, pct_change=None, last_date=None, source="list") for h in securities.search_names(raw) if h["symbol"] not in seen_names][:6]
     note = ""
@@ -279,6 +281,8 @@ def peers(sym, limit=10):
     row = securities.get(sym)
     if not row:
         return {"sym": sym, "company": None, "industry": None, "count": 0, "peers": [], "self": None}
+    if row["industry"] == securities.UNCLASSIFIED:   # listed on NSE but not in the Nifty Total Market list: no industry, so no peer group
+        return {"sym": sym, "company": row["company"], "industry": row["industry"], "count": 0, "peers": [], "self": None, "stale": False, "unclassified": True}
     members = securities.industry_members(row["industry"])
     out = {"sym": sym, "company": row["company"], "industry": row["industry"], "count": len(members), "peers": [], "self": None, "stale": False}
     try:
@@ -311,6 +315,7 @@ RANGE_DAYS = {"1W": 7, "1M": 31, "3M": 92, "6M": 183, "1Y": 366, "5Y": 1830, "10
 
 
 LIVE_TTL = 1.0        # seconds a live quote may be reused while the market trades: the feed asks again every second
+FEED_MS = 100         # how often the page asks for the feed while the market trades (the answer comes from memory; NSE is asked far less often, see below)
 LIVE_BUDGET = 10.0    # at most this many NSE stock-quote calls per second in total; with more symbols on screen each one is refreshed proportionally less often
 _active = {}          # symbol -> last time a client asked for it (the symbols that count against the budget)
 
@@ -493,7 +498,7 @@ def live_feed(symbols):
     """Everything the screens repaint every second: headline indices, sector tiles and the requested stocks (at most 40). Failures degrade to what is cached."""
     t = time.time()
     state = marketclock.market_state(t)
-    out = {"t": int(t * 1000), "market": state, "intervalMs": 1000 if state["live"] else 30000, "indices": [], "sectorIndices": [], "quotes": []}
+    out = {"t": int(t * 1000), "market": state, "intervalMs": FEED_MS if state["live"] else 30000, "indices": [], "sectorIndices": [], "quotes": []}
     try:
         by = _live_indices()
         row = lambda lv, name: {"name": lv.get("indexName") or name, "last": lv.get("last"), "prev": lv.get("previousClose"), "pct": lv.get("percChange")}
@@ -546,3 +551,11 @@ def intraday(sym):
 def candles(sym, tf):
     """Intraday candles (5m, 15m, 1h) from Yahoo Finance; see yahoo.py."""
     return yahoo.candles(sym, tf)
+
+
+def listings(days=60):
+    """Recently listed (and about to list) NSE equities, newest first, for the New on NSE card."""
+    if securities.due_listed():   # refresh on demand too, in the background: the answer below is never delayed by it
+        threading.Thread(target=securities.refresh_listed, daemon=True, name="listed-refresh").start()
+    rows = securities.new_listings(days)
+    return {"days": days, "total": len(securities.LISTED), "recent": rows[:60]}

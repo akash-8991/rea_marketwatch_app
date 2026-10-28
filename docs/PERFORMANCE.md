@@ -14,7 +14,7 @@ Nothing is estimated except where the word "estimate" appears.
 * Measured effect (live NSE, same script, old release against new): time until a stock page can show its price **median 1,011 ms to 180 ms**; a 20-stock watchlist **20.8 s to 4.9 s**
   with 154 requests becoming 50; search **p95 977 to 326 ms**; NSE not answering **10.3 s to 6.0 s**.
 * **Not met** (and why, sections 7 and 20): an uncached quote under 300 ms is not reliable, because only about 43% of NSE calls reach a backend that knows the session (measured), which
-  puts the floor near 320 ms at the median round trip; a first-ever cold dashboard takes about 1.5 s (two sequential NSE rounds); refreshing data every second is not possible and
+  puts the floor near 320 ms at the median round trip; a first-ever cold dashboard takes about 1.5 s (two sequential NSE rounds); refreshing data every second is not possible at the source and
   was deliberately not attempted (NSE updates about once a minute).
 
 ## 2. Current architecture and request-flow model (before the work)
@@ -162,7 +162,7 @@ Reading it honestly:
 | Dashboard under 300 ms | **Met with saved data** (under 1 ms plus about 28 ms to draw); **not met** for a first-ever cold load (about 1.5 s: two NSE rounds in sequence) |
 | p95 API under 300 ms | **Met** for everything served from cache or saved data; **not met** for calls that wait on NSE |
 | p99 API under 150 ms | **Met** for cached paths (under 32 ms at 16 clients); not for uncached NSE calls. (A p99 target below the p95 target is internally inconsistent, since p99 cannot be lower than p95; it was applied to cached paths.) |
-| Data refresh interval of 1 second | **Done at our end, bounded by the source**: the feed (`/api/live`, `live.js`) asks every second, never overlaps, pauses when hidden and slows to 30 s when the market is shut; the server reuses a quote for 1 s and spends at most 10 NSE stock-quote calls a second across everything on screen (indices and sector tiles are one call). More symbols on screen mean each is refreshed proportionally less often. Whether the value changes every second is up to NSE: the tool states about one update a minute, which could not be verified here (the market was shut while this was built) |
+| Data refresh interval of 100 ms | **Done at our end, bounded by the source**: the feed (`/api/live`, `live.js`) asks every 100 ms (measured: 10 requests a second in a simulated session), never overlaps, pauses when hidden, slows to 30 s when the market is shut and repaints only when a value changed. The server answers from memory, reuses an NSE quote for up to 1 s and spends at most 10 NSE stock-quote calls a second across everything on screen (indices and sector tiles are one call). More symbols on screen mean each is refreshed proportionally less often. NSE is deliberately not asked every 100 ms: its tool states about one update a minute (not verified live: the market was shut while this was built), so more requests would only risk NSE pausing the app |
 | Initial usable UI under 100 ms | **Met** on this machine: 28 ms median, 67 ms on a first load. Not measured on a phone |
 | Availability above 99% | **Not measurable here.** By design the app keeps working on saved data when NSE fails (tested), but no uptime figure is claimed |
 

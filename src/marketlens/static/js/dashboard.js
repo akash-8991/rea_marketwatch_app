@@ -16,7 +16,9 @@ export function mount(root, ctx) {
   const saveUser = () => store.set('ml.dash', user);
   const st = { rows: new Map(), loading: false, error: null, refreshedAt: null, timer: 0, tickId: 0, seq: 0, ctl: null, source: 'NSE', marketLabel: '' };
   const wl = () => store.get('ml.watchlist', []);
-  const setWl = (list) => store.set('ml.watchlist', list);
+  let unwatch = () => {}, offFeed = () => {};
+  const rewatch = () => { unwatch(); unwatch = window.MLLive ? window.MLLive.watch(wl()) : () => {}; };   // the live feed (live.js) asks for every watchlist symbol
+  const setWl = (list) => { store.set('ml.watchlist', list); rewatch(); };
 
   /* ---------- data ---------- */
   const CHUNK = 10;   // small chunks so the first rows appear as soon as NSE answers for them, not after the slowest symbol
@@ -92,7 +94,17 @@ export function mount(root, ctx) {
   const onVisibility = () => { if (document.hidden) clearTimeout(st.timer); else if (document.body.contains(root)) refreshAll(); };
   document.addEventListener('visibilitychange', onVisibility);
   const ticker = setInterval(() => { if (!document.body.contains(root)) { cleanup(); } else paintStamp(); }, 1000);
-  function cleanup() { clearTimeout(st.timer); clearInterval(ticker); st.ctl?.abort(); document.removeEventListener('visibilitychange', onVisibility); }
+  /* the live feed (100 ms) updates the rows in place; only a row whose numbers changed is repainted */
+  rewatch();
+  offFeed = window.MLLive ? window.MLLive.onFeed((f) => {
+    for (const q of f.quotes || []) {
+      const r = st.rows.get(q.sym); if (!r || r.loading || !(q.price > 0) || q.status === 'unavailable') continue;
+      if (r.price === q.price && r.volume === q.volume && r.ts === q.ts) continue;
+      Object.assign(r, { price: q.price, prev: q.prev ?? r.prev, abs: q.abs ?? r.abs, chg: q.chg ?? r.chg, volume: q.volume ?? r.volume, ts: q.ts ?? r.ts, ageMs: q.ageMs ?? r.ageMs, status: q.status || r.status });
+      st.refreshedAt = Date.now(); paintRow(q.sym);
+    }
+  }) : () => {};
+  function cleanup() { unwatch(); offFeed(); clearTimeout(st.timer); clearInterval(ticker); st.ctl?.abort(); document.removeEventListener('visibilitychange', onVisibility); }
 
   /* ---------- rendering ---------- */
   const visibleRows = () => wl().map((s) => st.rows.get(s)).filter(Boolean).filter((r) => matches(r, user.filter)

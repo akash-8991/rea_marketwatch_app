@@ -137,7 +137,7 @@ test('option chain: contracts stay from the last file, the spot and ATM row go l
 test('one-second feed: indices, sectors and the requested stocks, reused inside the second, refetched after it, recorded as intraday bars', async () => {
   const clock = { t: at('2026-10-26T10:45:00') }, price = { v: 105 }, srv = market({ price, day: '2026-10-26' }), e = mk(srv, clock);
   const live = await get(e, '/api/live?symbols=AAA,BBB,nope!');
-  assert.equal(live.market.live, true); assert.equal(live.intervalMs, 1000);
+  assert.equal(live.market.live, true); assert.equal(live.intervalMs, 100);
   assert.deepEqual(live.indices.map((i) => i.name), ['NIFTY 50']); assert.equal(live.indices[0].last, 105 * 200);
   assert.deepEqual(live.quotes.map((q) => q.sym), ['AAA', 'BBB']); assert.equal(live.quotes[0].price, 105); assert.ok('open' in live.quotes[0] && 'high' in live.quotes[0]);
   assert.equal(srv.tools.cm_get_stock_quote, 2); assert.equal(srv.tools.cm_get_live_indices, 1);

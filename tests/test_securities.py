@@ -17,12 +17,14 @@ class Isolated(unittest.TestCase):
         self.saved = (s.data_dir, s.offline)
         s.data_dir, s.offline = Path(self.tmp.name), False
         securities.load_bundled()
+        securities.load_bundled_listed()
         store.clear_memory()
 
     def tearDown(self):
         optiondb.close()
         config.settings.data_dir, config.settings.offline = self.saved
         securities.load_bundled()
+        securities.load_bundled_listed()
         store.clear_memory()
         self.tmp.cleanup()
 
@@ -97,6 +99,65 @@ class WeeklyRefresh(Isolated):
         self.assertIn("download failed", r["skipped"]); self.assertEqual(len(securities.ROWS), 755); self.assertEqual(len(asked2), 2)
         self.assertTrue(any(e["event"] == "securities_update_failed" for e in optiondb.audit_log(20)))
         self.assertIn("skipped", securities.refresh(fetch=fetch2))   # a dead link is retried next week, not on every start
+
+
+LISTED_HEAD = "SYMBOL,NAME OF COMPANY, SERIES, DATE OF LISTING, PAID UP VALUE, MARKET LOT, ISIN NUMBER, FACE VALUE\n"
+
+
+def listed_csv(extra=()):
+    base = [f"OLD{i:04d},Old Company {i} Limited,EQ,01-JAN-2010,10,1,INE{i:09d},10" for i in range(1600)]
+    return LISTED_HEAD + "\n".join(base + list(extra)) + "\n"
+
+
+class AllListedEquities(Isolated):
+    def test_bundled_snapshot_covers_every_listed_equity_with_listing_dates(self):
+        self.assertGreater(len(securities.LISTED), 2000)
+        self.assertTrue(all(r["listed"] for r in list(securities.LISTED.values())[:50]))
+
+    def test_unusable_downloads_are_refused(self):
+        for text in ("", "SYMBOL,X\nA,B\n", LISTED_HEAD + "ABC,Abc Ltd,EQ,01-JAN-2020,10,1,INE000000001,10\n"):
+            with self.assertRaises(securities.ListError):
+                securities.parse_listed(text)
+
+    def test_a_new_listing_appears_in_search_stock_pages_and_the_new_listings_card_without_an_index_change(self):
+        securities.load()
+        text = listed_csv(["NEWCO,Newco Technologies Limited,EQ,27-OCT-2026,10,1,INE999Z01012,10", "SOONCO,Soonco Limited,EQ,30-OCT-2026,10,1,INE999Z01020,10"])
+        fetch, asked = self.fetcher(lambda url: text)
+        r = securities.refresh_listed(force=True, fetch=fetch)
+        self.assertEqual(asked, [securities.LISTED_SOURCE])
+        self.assertIn("NEWCO", r["added"])
+        row = securities.get("newco")
+        self.assertEqual((row["company"], row["industry"], row["inIndex"]), ("Newco Technologies Limited", "Unclassified", False))
+        self.assertEqual(securities.search_symbols("newc")[0]["symbol"], "NEWCO")
+        self.assertEqual(securities.search_names("Newco Technologies")[0]["symbol"], "NEWCO")
+        today = __import__("datetime").date(2026, 10, 28)
+        recent = securities.new_listings(30, today=today)
+        self.assertEqual([x["symbol"] for x in recent][:2], ["SOONCO", "NEWCO"])
+        self.assertEqual([x["upcoming"] for x in recent][:2], [True, False])
+        self.assertTrue(market.peers("NEWCO")["unclassified"])
+        # the list survives a restart (read back from the database)
+        securities._install_listed({})
+        securities.load()
+        self.assertIn("NEWCO", securities.LISTED)
+
+    def test_refresh_cadence_failures_and_offline(self):
+        securities.load()
+        fetch, asked = self.fetcher(lambda url: listed_csv())
+        securities.refresh_listed(force=True, fetch=fetch)
+        self.assertIn("checked within", securities.refresh_listed(fetch=fetch)["skipped"])
+        self.assertEqual(len(asked), 1)
+        before = dict(securities.LISTED)
+        bad, _ = self.fetcher(lambda url: OSError("down"))
+        self.assertIn("download failed", securities.refresh_listed(force=True, fetch=bad)["skipped"])
+        self.assertEqual(securities.LISTED, before, "a failed download changes nothing")
+        config.settings.offline = True
+        self.assertEqual(securities.refresh_listed(force=True, fetch=fetch)["skipped"], "offline mode")
+
+    def test_the_api_card_lists_recent_first(self):
+        securities._install_listed(securities.parse_listed(listed_csv(["NEWCO,Newco Limited,EQ,%s,10,1,INE999Z01012,10" % __import__("datetime").date.today().strftime("%d-%b-%Y").upper()])))
+        out = market.listings(30)
+        self.assertEqual(out["recent"][0]["symbol"], "NEWCO")
+        self.assertGreater(out["total"], 1600)
 
 
 class Peers(Isolated):

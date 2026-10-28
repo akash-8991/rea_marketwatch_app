@@ -88,7 +88,9 @@ class ServerTests(unittest.TestCase):
 
     def test_search_uses_saved_symbols(self):
         d = json.loads(self.get("/api/search?q=tc")[2])
-        self.assertEqual([r["symbol"] for r in d["results"]], ["TCS"])
+        syms = [r["symbol"] for r in d["results"]]
+        self.assertEqual(syms[0], "TCS", "saved symbols come first")
+        self.assertIn("TCIEXP", syms, "then every other NSE-listed equity that matches")
 
     def test_option_chain_unconfigured_is_explicit(self):
         d = json.loads(self.get("/api/options?symbol=NIFTY")[2])

@@ -32,7 +32,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
 MAX_UPLOAD = optiondb.MAX_CSV_BYTES
 LOOPBACK = ("127.0.0.1", "localhost", "::1", "[::1]")
 RID_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
-KNOWN_ROUTES = {"/healthz", "/readyz", "/api/config", "/api/bootstrap", "/api/live", "/api/extras", "/api/sentiment", "/api/search", "/api/options",
+KNOWN_ROUTES = {"/healthz", "/readyz", "/api/config", "/api/bootstrap", "/api/live", "/api/listings", "/api/extras", "/api/sentiment", "/api/search", "/api/options",
                 "/api/options/meta", "/api/options/import", "/api/audit", "/api/metrics", "/api/vitals",
                 "/api/auth/status", "/api/auth/me", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/forgot-user-id", "/api/auth/update-credentials"}
 PUBLIC_API = {"/api/auth/status", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/forgot-user-id", "/api/auth/update-credentials"}
@@ -499,6 +499,12 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             sym = urllib.parse.unquote(m.group(1)).upper()
             return self._json(market.quote(sym, fresh=bool(qs.get("fresh")))) if market.SYMBOL_RE.match(sym) else self._error(400, "bad symbol")
+        if p == "/api/listings":
+            try:
+                days = max(1, min(365, int(qs.get("days", ["60"])[0])))
+            except ValueError:
+                days = 60
+            return self._json(market.listings(days))
         if p == "/api/live":
             return self._json(market.live_feed([x for x in qs.get("symbols", [""])[0].split(",") if x]))
         m = re.match(r"^/api/intraday/([^/]+)$", p)

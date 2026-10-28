@@ -247,7 +247,7 @@ export function mount(root, { sym: start, bySym }) {
     S.live = q; const before = S.candles.length ? S.candles[S.candles.length - 1].c : null;
     if (INTRADAY.has(S.tf)) { if (r.market && r.market.live && S.candles.length) { S.candles = applyTick(S.candles, q.price, Math.floor(Date.now() / 1000), S.tf); } }
     else if (S.daily.length) build();
-    if (S.candles.length && S.candles[S.candles.length - 1].c !== before) { S.ind = indicators(S.candles); S.an = analyse(S.candles, S.ind, S.tf); draw(); S.ticks = (S.ticks || 0) + 1; if (S.ticks % 5 === 0) paintRead(); }
+    if (S.candles.length && S.candles[S.candles.length - 1].c !== before) { S.ind = indicators(S.candles); S.an = analyse(S.candles, S.ind, S.tf); const t = Date.now(); if (t - (S.drawnAt || 0) >= 250) { S.drawnAt = t; draw(); S.ticks = (S.ticks || 0) + 1; if (S.ticks % 8 === 0) paintRead(); } }
   }) : () => {};
   stop.push(off);
   const refreshBars = setInterval(async () => { if (!S.alive || document.hidden || !INTRADAY.has(S.tf) || !marketLive()) return; try { await ensureData(); build(); draw(); paintRead(); } catch (e) { /* the next attempt will try again */ } }, 15000);

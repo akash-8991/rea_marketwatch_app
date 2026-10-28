@@ -51,7 +51,7 @@ class LiveFeed(Base):
     def test_indices_sectors_and_stocks_are_answered_from_a_one_second_cache(self):
         r = market.live_feed(["AAA", "BBB", "bad!"])
         self.assertTrue(r["market"]["live"])
-        self.assertEqual(r["intervalMs"], 1000)
+        self.assertEqual(r["intervalMs"], 100)
         self.assertEqual([i["name"] for i in r["indices"]], ["NIFTY 50", "NIFTY BANK"])
         self.assertEqual(r["indices"][0]["last"], 105 * 200)
         self.assertEqual([q["sym"] for q in r["quotes"]], ["AAA", "BBB"])

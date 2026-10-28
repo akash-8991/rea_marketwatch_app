@@ -17,7 +17,8 @@ Environment variables: `NSE_CM_MCP_URL`, `NSE_BHAVCOPY_MCP_URL`, `NSE_FO_MCP_URL
 | `GET /api/metrics` (phone engine too) | Per-route request counts by status class, latency p50/p95/p99/max (last 2,000 requests per route), in-flight gauge, counters (`rate_limited`, `load_shed`, `internal_errors`, `connections_refused`), web vitals from real page loads, **data age** per dataset, NSE breaker state, scheduler state. Labels are route templates, never raw paths or IDs. |
 | `GET /api/audit?limit=N` | Recent audit entries and whether the hash chain verifies. |
 | `GET /api/quote/<SYMBOL>[?fresh=1]` | lean quote: price, change, last-trade time and age, company, a status (`live`, `delayed`, `closed`, `stale`, `unavailable`). One NSE call, shared by simultaneous callers, cached 30 s while the market trades and 15 min otherwise; `fresh=1` bypasses the cache at most once per symbol per 5 s; answers from the saved copy (`stale`) if NSE has not replied in 6 s |
-| `GET /api/live?symbols=A,B,…` | the one-second feed (rate class `live`: 120 burst, 40 a second): headline indices, sector tiles and up to 40 stocks or indices (`IDX_` keys come back as quotes) (price, change, open, high, low, volume, status), the market state and the interval the page should use (1 s open, 30 s closed) |
+| `GET /api/listings?days=60` | equities listed in the last N days (max 365) and those listing within a week, newest first, with `upcoming` and `inIndex` flags, from NSE's `EQUITY_L.csv` (refreshed every 6 hours; also refreshed in the background when you ask and it is due) |
+| `GET /api/live?symbols=A,B,…` | the live feed, polled every 100 ms (rate class `live`: 120 burst, 40 a second): headline indices, sector tiles and up to 40 stocks or indices (`IDX_` keys come back as quotes) (price, change, open, high, low, volume, status), the market state and the interval the page should use (1 s open, 30 s closed) |
 | `GET /api/candles/<SYMBOL or IDX_key>?tf=5m\|15m\|1h` | intraday candles `[epoch s, open, high, low, close, volume]` from Yahoo Finance's chart endpoint (cached 1 min while the market trades, 15 min otherwise; `available:false` with the reason when Yahoo cannot be reached, offline mode is on, or the index has no Yahoo ticker) |
 | `GET /api/intraday/<SYMBOL or IDX_key>` | one-minute bars `[epoch s, open, high, low, close, volume]` for the last 5 days, recorded from live quotes while the app was open (NSE keeps daily history only); the chart page builds 5 min, 15 min and hourly candles from them |
 | `GET /api/quotes?symbols=A,B,…` | the same for up to 50 symbols at once (invalid and duplicate symbols handled), order kept |
@@ -31,7 +32,7 @@ Environment variables: `NSE_CM_MCP_URL`, `NSE_BHAVCOPY_MCP_URL`, `NSE_FO_MCP_URL
 | Local interaction to next frame | < 100 ms | ≈ 33 ms (2 frames) |
 | Cached or simple API p95 | < 100 ms | 0.2–1.6 ms (1 client), ≤ 14.5 ms (16 clients) |
 | Backend p95 excluding upstream | < 200 ms | same as above (upstream excluded) |
-| Data freshness (live mode) | the screens re-check every second; a quote is reused for at most 1 s (more with many symbols: see the budget below); flagged **Delayed** after 10 min | not verified against live NSE: NSE's tool states about one update a minute |
+| Data freshness (live mode) | the screens re-check every 100 ms; an NSE quote is reused for at most 1 s (more with many symbols: see the budget below); flagged **Delayed** after 10 min | not verified against live NSE: NSE's tool states about one update a minute |
 | Errors under 16 clients | 0 | 0 |
 These are engineering targets, not guarantees. No claim is made for sub-millisecond or guaranteed refresh rates.
 
@@ -126,4 +127,4 @@ has no dependencies and bundles no NSE data.
 | Search deadline | 450 ms | typing stays smooth when NSE's symbol search is slow |
 | Saved data first (home data) | the saved copy answers at once and is refreshed in the background; the page polls while `refreshing` is true | a first load after the app was closed never waits for NSE (it used to wait about 13 s, longer than the page's 10 s timeout) |
 | Request coalescing | one in-flight request per key | a burst of identical requests costs one NSE call |
-| Cache TTLs | quotes and live indices 1 s while the market trades, stretched to (symbols on screen ÷ 10) seconds when more than 10 are shown, 15 min closed; history 12 h; peers ranking 30 min | the one-second feed: at most 10 NSE stock-quote calls a second in total, so a busy page never sends more requests, it refreshes each row less often |
+| Cache TTLs | quotes and live indices 1 s while the market trades (the page polls the server every 100 ms, which answers from memory), stretched to (symbols on screen ÷ 10) seconds when more than 10 are shown, 15 min closed; history 12 h; peers ranking 30 min | the live feed: at most 10 NSE stock-quote calls a second in total, so a busy page never sends more requests, it refreshes each row less often |

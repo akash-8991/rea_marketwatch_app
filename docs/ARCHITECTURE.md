@@ -44,7 +44,7 @@ cannot reach the local server) and **Updating…** independently.
 
 | Decision | Why | Trade-off |
 |---|---|---|
-| Polling once a second (`/api/live`), not WebSockets/SSE | Upstream is pull-only, so a push channel would only add reconnect, replay and backpressure code. One small request a second, never overlapping, paused when the tab is hidden, answered from a one-second server cache with a fixed budget of 10 NSE stock-quote calls a second (so a long list is refreshed proportionally less often, never more requests). While the market is shut it slows to every 30 s. | A value changes on screen within about a second of NSE publishing it; NSE's own source states about one update a minute, so numbers can repeat between its updates. |
+| Polling every 100 ms (`/api/live`), not WebSockets/SSE | Upstream is pull-only, so a push channel would only add reconnect, replay and backpressure code. One small request every 100 ms, never overlapping, paused when the tab is hidden, answered from memory; an NSE quote is reused for up to a second and the server spends at most 10 NSE stock-quote calls a second in total (so a long list is refreshed proportionally less often, never more requests). Repaints only when a value changed. While the market is shut it slows to every 30 s. | A change shows on screen within about 100 ms of the server having it, and the server has it within about a second of NSE publishing it; NSE's own source states about one update a minute, so numbers repeat between its updates. |
 | SQLite, one file | Open source, in the standard library, ACID, enough for a few thousand snapshots. | Single writer; fine for one user. |
 | No framework or build step | Few moving parts; one `pip install`. Lazy `import()` gives route-level code splitting for the largest view. | Hand-written rendering; no component library. |
 | In-process token buckets keyed by TCP peer | Single instance, no network hop per request. `X-Forwarded-For` is ignored (forgeable). | Not shared across processes; behind a reverse proxy, limit at the proxy. |
@@ -103,7 +103,7 @@ flowchart LR
   C -. "#/quote" .-> H
   C -. "#/paper" .-> Pp
   C -. "#/chart" .-> Cv
-  C -. "after sign-in, every second" .-> Lv
+  C -. "after sign-in, every 100 ms" .-> Lv
   C --> API["/api/*"]
 ```
 Request path for a price: user action → state (the UI already holds the last values) → client cache (palette results 10 min, chart ranges 5 min, last watchlist prices
