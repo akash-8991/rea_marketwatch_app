@@ -11,6 +11,7 @@ Python standard library.
   rating (trend/momentum from daily closes), a **sentiment** rating (keyword scoring of recent headlines) and an
   **income view** (dividends and corporate actions). The exact rules are written out in plain language at the bottom of
   the page, generated from the same constants the code uses.
+- **Zerodha first, NSE otherwise**: when Zerodha is connected, live quotes, index levels and daily history are pulled from Kite Connect; if it is not connected (or fails) the same data comes from NSE, and the source is shown in Settings and in every API answer.
 - **Live news** from Yahoo Finance and Google News, split into **India** and **Global** stocks.
 - **Market updates** in four categories: Markets, Stocks, Trends and **Economy**. Economy is live headlines on the macro and micro economy: central bank and rate decisions (RBI, Fed, ECB), GDP and growth, PMI, inflation, the external sector (CAD, CAS, forex reserves), exports and imports, tax (GST, direct tax), the budget and fiscal numbers, jobs, and demand and credit, with a filter per topic.
 - **Option chain** page backed by a local SQLite database: import CSVs you download from NSE's option-chain page,
@@ -28,7 +29,7 @@ Python standard library.
 |---|---|---|
 | **An Android phone** | On the phone, tap **[Download MarketLens for Android](https://github.com/akash-8991/rea_marketwatch_app/raw/main/downloads/MarketLens-android.apk)** (a ready-built `.apk`, nothing to run), open the downloaded file, allow the install, create an account. Standalone: no computer needed. Details: [docs/MOBILE.md](docs/MOBILE.md). | 2 min |
 | **Docker** | `docker run -d --name marketlens -p 127.0.0.1:8080:8080 -v marketlens-data:/data ghcr.io/akash-8991/rea_marketwatch_app:latest`, then open <http://127.0.0.1:8080>. Or use [docker-compose.yml](docker-compose.yml). | 1 min |
-| **Python 3.9+** | `pip install marketlens-0.10.1-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
+| **Python 3.9+** | `pip install marketlens-0.10.2-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
 | **An iPhone** | Not available yet; needs a Mac with Xcode to build. See [docs/MOBILE.md](docs/MOBILE.md), section 7. | |
 
 The first screen asks you to create an account; after that you sign in with your user ID and password. You then stay signed in
@@ -56,7 +57,7 @@ happen on GitHub), [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/ARCHITECTURE.
 Requires Python 3.9 or newer (tested on 3.12, 3.13 and 3.14; 3.9-3.11 are untested).
 
 ```bash
-pip install marketlens-0.10.1-py3-none-any.whl     # or: pip install .  from a source checkout
+pip install marketlens-0.10.2-py3-none-any.whl     # or: pip install .  from a source checkout
 marketlens                                         # opens http://127.0.0.1:8080/
 marketlens-options-mcp --data-dir <data folder>    # optional: MCP (stdio) server over the option-chain database
 ```
@@ -87,6 +88,7 @@ Environment overrides: `NSE_CM_MCP_URL`, `NSE_BHAVCOPY_MCP_URL`, `NSE_FO_MCP_URL
 
 | Data | Source |
 | --- | --- |
+| **Live quotes, index levels and daily history (desktop app, pip package, container)** | **Zerodha (Kite Connect) when you are connected** (Settings, Zerodha); **NSE otherwise**, and NSE again whenever Zerodha does not answer or your Kite plan lacks that data. Every answer says which source it came from. The phone app has no Zerodha connection and always uses NSE. See docs/BROKER.md. |
 | Prices, OHLC, 52-week range, volume, turnover, indices, breadth, VIX, daily history, corporate actions, index P/E, P/B and dividend yield | NSE's MCP servers (`mcp.nseindia.in`), fetched on demand through the local server |
 | Headlines | Yahoo Finance RSS and Google News RSS (Google Finance has no public feed; this is its news source). Only the headline, publisher, time and link are used; links open the publisher. |
 | Option chain | CSV files **you download yourself** from NSE's option-chain page, and/or an official NSE derivatives MCP endpoint **you configure**. The default NSE servers are cash-market only and have no option tool. MarketLens never fetches nseindia.com or drives a browser. |
@@ -209,7 +211,7 @@ the Python engine's output stored in `mobile/tests/golden.json` (regenerate with
 `PYTHONPATH=src python3 mobile/scripts/gen-golden.py`).
 
 Layout: `src/marketlens/` (`nse.py` MCP client and rate limiting, `market.py` data assembly, `analysis.py` scoring,
-`news.py` feeds and sentiment, `options.py` option-chain adapter, `optiondb.py` SQLite store, CSV parser and audit log,
+`kitedata.py` Zerodha-first market data with NSE fallback, `news.py` feeds and sentiment, `options.py` option-chain adapter, `optiondb.py` SQLite store, CSV parser and audit log,
 `scheduler.py` 2.5-minute refresh, `options_mcp.py` MCP server, `ratelimit.py` and `metrics.py` traffic control and
 telemetry, `server.py` HTTP server and API, `static/` web app: `lib.js` shared helpers and API client, `app.js` router and
 views, `screener.js` lazy-loaded screener, `css/style.css` design tokens and components).

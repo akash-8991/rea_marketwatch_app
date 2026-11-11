@@ -1,6 +1,6 @@
 # Zerodha (Kite Connect) connection
 
-Desktop app only (the pip package and the container). The phone app has no broker connection: Kite Connect needs a whitelisted static IP to place orders, and your API secret should stay on a machine you control.
+Desktop app only (the pip package and the container; the phone app uses NSE only). The phone app has no broker connection: Kite Connect needs a whitelisted static IP to place orders, and your API secret should stay on a machine you control.
 Paper and shadow trading work everywhere.
 
 ## Setting it up
@@ -11,6 +11,18 @@ Paper and shadow trading work everywhere.
 4. The session lasts until about 06:00 India time the next day, then you sign in again (the page says when).
 
 Reading (profile, margins, positions, holdings, today's orders) works whenever you are connected.
+
+## Market data: Zerodha first, NSE otherwise
+
+While you are connected, the server pulls **live quotes** (`/quote`, one call for all symbols on screen, shared with the index levels), the **index levels** (Nifty 50, Bank, Next 50, Midcap 100 and the sector indices Kite carries) and **daily history** (up to ten years, from Kite's instrument list and historical-data endpoint) from Kite Connect. When you are not connected, the session has expired (about 06:00 IST), the server runs with `--offline`, or Kite does not answer, the same data comes from NSE exactly as before.
+
+* **Per call, never all-or-nothing**: a symbol or index Kite does not return (for example a name it spells differently) is fetched from NSE for that call.
+* **Back-off**: a permission failure (typically a Kite plan without market or historical data) pauses Kite for 5 minutes, a network failure for 30 seconds; NSE is used meanwhile, so a broken Kite never slows the screens. The reason is shown on **Settings, Zerodha, Market data**.
+* **The source is always shown**: `source` is `"zerodha"`, `"nse"` or `"saved"` (a saved copy) on `/api/quote/<symbol>`, on each quote in `/api/quotes` and `/api/live`, on `/api/live` itself, and on `/api/history/<symbol>`; `GET /api/broker/status` has `marketData: {source, reason}`.
+* **Limits respected**: Kite allows about one quote request a second (up to 500 instruments) and about three historical requests a second; the app batches and spaces calls to stay inside, so Kite quotes are reused for one second.
+* **Still from NSE whatever you connect**: the stock universe and fundamentals snapshot (P/E, market cap, 52-week range on the stock page), corporate actions, option chains, new listings, and every index Kite does not carry. Kite's quote has no 52-week range or turnover, so those two fields are empty on Zerodha quotes. Kite's daily history is as Zerodha publishes it (not adjusted by this app for splits or bonuses).
+* Reading market data needs a Kite Connect plan that includes it; the free personal tier is for orders and account reading only, so there the app falls back to NSE (after one failed call, then every 5 minutes).
+* **Not verified against Zerodha's servers**: the tests use a fake Kite (quotes, indices, instruments, historical candles, failure and back-off, fallbacks).
 
 ## Placing orders (off by default)
 

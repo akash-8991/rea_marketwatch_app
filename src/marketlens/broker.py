@@ -114,7 +114,12 @@ def status():
     return {"configured": bool(key and d.get("api_secret")), "apiKey": (key[:3] + "…" + key[-2:]) if len(key) > 6 else ("set" if key else None), "connected": not _expired(d),
             "user": {"id": d.get("user_id"), "name": d.get("user_name"), "email": d.get("email")} if d.get("user_id") else None, "tokenExpiresAt": d.get("token_expires"),
             "liveOrdersEnabled": bool(settings.live_orders), "killSwitch": kill_active(), "maxOrderValue": d.get("max_order_value", MAX_ORDER_VALUE), "maxOps": MAX_OPS,
-            "redirectUrl": f"http://{settings.host}:{settings.port}/broker/callback"}
+            "redirectUrl": f"http://{settings.host}:{settings.port}/broker/callback", "marketData": _market_data()}
+
+
+def _market_data():
+    from . import kitedata   # imported here: kitedata uses this module
+    return kitedata.status()
 
 
 def save_credentials(api_key, api_secret):
@@ -157,7 +162,7 @@ def _http(method, url, headers=None, data=None, timeout=12):
     req = urllib.request.Request(url, data=data, method=method, headers=dict({"X-Kite-Version": "3", "User-Agent": "MarketLens/1.0"}, **(headers or {})))
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status, r.read(2_000_000)
+            return r.status, r.read(12_000_000)   # the instrument list alone is several MB
     except urllib.error.HTTPError as e:
         return e.code, e.read(200_000)
     except OSError as e:
@@ -188,6 +193,18 @@ def _call(method, path, params=None, form=None, auth=True):
             raise BrokerError(f"Zerodha rejected the session ({msg}). Sign in again.", 401)
         raise BrokerError(msg, 400 if status_code < 500 else 502)
     return doc.get("data")
+
+
+def raw_get(path, params=None):
+    """An authenticated GET whose answer is not JSON (the instrument list is a CSV). Returns the text."""
+    d = _read()
+    if _expired(d):
+        raise BrokerError("Not connected to Zerodha (the token expires about 06:00 IST every day): sign in again on the Settings page.", 401)
+    url = KITE + path + (("?" + urllib.parse.urlencode(params)) if params else "")
+    code, raw = _http("GET", url, {"Authorization": f"token {d['api_key']}:{d['access_token']}"}, None, 60)
+    if code >= 400:
+        raise BrokerError(f"Zerodha answered HTTP {code}", 400 if code < 500 else 502)
+    return raw.decode("utf-8", "replace")
 
 
 def exchange(request_token):

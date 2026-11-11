@@ -5,7 +5,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
-from . import analysis, marketclock, nse, securities, store, ticks, yahoo
+from . import analysis, kitedata, marketclock, nse, securities, store, ticks, yahoo
 from .config import settings
 
 SECTOR_MAP = securities.SECTOR_MAP   # symbol -> industry, from NSE's Nifty Total Market list; the same dict is updated in place when the list is refreshed
@@ -269,7 +269,7 @@ def _rank_industry(members):
 
 
 def _live_row(sym):
-    q = (store.cached("lq:" + sym, 60, lambda: nse.cm("cm_get_stock_quote", {"symbol": sym})) or {}).get("stock") or {}
+    q = (store.cached("lq:" + sym, 60, lambda: _fetch_quote(sym)) or {}).get("stock") or {}
     price, prev = q.get("lastTradedPrice"), q.get("preClosePrice")
     chg = q.get("perChange") if q.get("perChange") is not None else (round((price - prev) / prev * 100, 2) if price and prev else None)
     return {"price": price, "prev": prev, "chg": chg, "volume": q.get("volume"), "valueCr": q.get("value"), "ts": q.get("latestTimestamp")}
@@ -324,6 +324,8 @@ def quote_ttl(sym=None):
     if not marketclock.in_session_hours(time.time()):
         return 900                                            # the market is shut: nothing changes
     now = time.time()
+    if kitedata.active("quote"):
+        return LIVE_TTL                                       # Kite answers many symbols in one call: no per-symbol NSE budget to ration
     if sym:
         _active[sym] = now
     for k in [k for k, t in _active.items() if now - t > 5]:
@@ -338,11 +340,19 @@ _quote_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="quote")
 FRESH_GUARD = 5.0   # "refresh now" may bypass the cache at most once per symbol per 5 s: a button mashed or a script cannot hammer NSE
 
 
+def _fetch_quote(sym):
+    """The raw quote for one symbol: from Zerodha when connected and it answers, else from NSE. The answer says which."""
+    k = kitedata.quotes([sym]).get(sym)
+    if k:
+        return {"stock": k, "source": "zerodha"}
+    return dict(nse.cm("cm_get_stock_quote", {"symbol": sym}) or {}, source="nse")
+
+
 def quote(sym, state=None, fresh=False):
     """One quote in the shape the UI needs, with an honest status: live, delayed, closed (market shut, last close), stale (saved copy because
     NSE could not be reached) or unavailable. Concurrent callers for the same symbol share one NSE request."""
     t0 = time.time()
-    key, stale, error, q = "lq:" + sym, False, None, None
+    key, stale, error, q, source = "lq:" + sym, False, None, None, "nse"
     if fresh and time.time() - _fresh_at.get(sym, 0) >= FRESH_GUARD:
         _fresh_at[sym] = time.time()
         store.forget(key)
@@ -350,18 +360,19 @@ def quote(sym, state=None, fresh=False):
         ttl = quote_ttl(sym)
         hit = store.peek(key)
         if hit is not None:                                                  # fresh in memory: answer in-thread, no worker hop (the sub-millisecond path)
-            q = (hit or {}).get("stock")
+            q, source = (hit or {}).get("stock"), (hit or {}).get("source", "nse")
         else:
-            fut = _quote_pool.submit(store.cached, key, ttl, lambda: nse.cm("cm_get_stock_quote", {"symbol": sym}))
+            fut = _quote_pool.submit(store.cached, key, ttl, lambda: _fetch_quote(sym))
             try:
-                q = (fut.result(timeout=QUOTE_DEADLINE) or {}).get("stock")     # if NSE has not replied by then the saved copy is used; the request still finishes and fills the cache
+                got = fut.result(timeout=QUOTE_DEADLINE) or {}
+                q, source = got.get("stock"), got.get("source", "nse")     # if NSE has not replied by then the saved copy is used; the request still finishes and fills the cache
             except FutureTimeout:
                 raise RuntimeError(f"NSE did not answer within {QUOTE_DEADLINE:g} s")
     except Exception as e:
         error = str(e)[:120]
         saved = {x["sym"]: x for x in (store.disk_get("bootstrap") or {}).get("stocks", [])}.get(sym)
         if saved:
-            stale = True
+            stale, source = True, "saved"
             q = {"lastTradedPrice": saved.get("price"), "preClosePrice": saved.get("prev"), "volume": saved.get("volume"), "latestTimestamp": saved.get("ts")}
     row = securities.get(sym) or {}
     if not q or not q.get("lastTradedPrice"):
@@ -380,7 +391,7 @@ def quote(sym, state=None, fresh=False):
             pass
     state = state or marketclock.market_state(time.time())
     status = "stale" if stale else ("delayed" if state["live"] and age_ms is not None and age_ms > 300000 else "live") if state["live"] else "closed"
-    out = {"sym": sym, "name": row.get("company"), "industry": row.get("industry"), "exchange": "NSE", "price": price, "prev": prev, "abs": abs_, "chg": chg,
+    out = {"sym": sym, "name": row.get("company"), "industry": row.get("industry"), "exchange": "NSE", "source": source, "price": price, "prev": prev, "abs": abs_, "chg": chg,
            "open": q.get("openPrice"), "high": q.get("highPrice"), "low": q.get("lowPrice"), "volume": q.get("volume"), "valueCr": q.get("value"), "hi52": q.get("fiftyTwoWeekHigh"), "lo52": q.get("fiftyTwoWeekLow"), "ts": ts, "ageMs": age_ms,
            "status": status, "fetchedAt": int(time.time() * 1000), "ms": round((time.time() - t0) * 1000)}
     if stale:
@@ -405,6 +416,10 @@ def quotes(symbols, state=None, fresh=False):
         if not SYMBOL_RE.match(sym):
             return {"sym": sym, "status": "unavailable", "reason": "not a valid NSE symbol", "exchange": "NSE", "fetchedAt": int(time.time() * 1000)}
         return quote(sym, state, fresh)
+    if kitedata.active("quote"):                                              # one Kite call for every symbol that is not already fresh; the rest below finds them in the cache
+        need = [x for x in listed[:50] if SYMBOL_RE.match(x) and store.peek("lq:" + x) is None]
+        for sym, k in kitedata.quotes(need).items():
+            store.cached("lq:" + sym, quote_ttl(), lambda k=k: {"stock": k, "source": "zerodha"})
     if all(store.peek("lq:" + x) is not None for x in listed[:50] if SYMBOL_RE.match(x)):
         out = [one(x) for x in listed[:50]]                                  # everything is fresh in memory: no thread pool, no waiting
     else:
@@ -425,7 +440,7 @@ def index_key(name):
 def index_name(key):
     """Back from the key to NSE's index name, using the live list when it is available (names can hold characters a key cannot)."""
     try:
-        for n in _live_indices():
+        for n in _live_indices(full=True):
             if index_key(n) == key:
                 return n
     except Exception:
@@ -450,6 +465,11 @@ def history(sym, rng):
     if rec and rec["points"] and len(rec["points"][0]) < 6:
         rec = None                                            # saved by an older release without open, high and low: fetch again
     covers = lambda r: r and (r["complete"] or (r["points"] and r["points"][0][0] <= cutoff))
+    if not covers(rec):
+        kite = kitedata.history(None if is_index else sym, index_name(sym) if is_index else None)   # Zerodha first (ten years in a few calls); None means use NSE below
+        if kite:
+            rec = {"points": kite, "complete": True, "next": None, "source": "zerodha"}
+            store.disk_put(key, rec)
     if not covers(rec):
         points = list(rec["points"]) if rec else []
         end = (rec or {}).get("next") or ""
@@ -477,13 +497,13 @@ def history(sym, rng):
             if p[0] not in seen:
                 seen.add(p[0])
                 uniq.append(p)
-        rec = {"points": uniq, "complete": complete, "next": nxt}
+        rec = {"points": uniq, "complete": complete, "next": nxt, "source": "nse"}
         store.disk_put(key, rec)
     pts = [p for p in rec["points"] if p[0] >= cutoff]
     earliest = rec["points"][0][0] if rec["points"] else None
     truncated = bool(earliest and earliest > cutoff and rec["complete"])
     out = {"sym": sym, "range": rng, "available": bool(pts), "points": pts, "from": pts[0][0] if pts else None, "to": pts[-1][0] if pts else None,
-           "earliest": earliest, "truncated": truncated}
+           "earliest": earliest, "truncated": truncated, "source": rec.get("source", "nse")}
     if truncated:
         out["note"] = f"NSE’s history starts on {earliest}; showing all of it."
     if not pts:
@@ -492,7 +512,7 @@ def history(sym, rng):
 
 
 # ---------- the fast live feed: indices, sector indices and the symbols on screen, answered from a one-second cache ----------
-def _live_indices():
+def _nse_indices():
     ttl = LIVE_TTL if marketclock.in_session_hours(time.time()) else 600
     live = store.cached("live:indices", ttl, lambda: nse.cm("cm_get_live_indices", {"group": "", "nameFilter": ""}))
     by = {}
@@ -502,11 +522,34 @@ def _live_indices():
     return by
 
 
+def _live_indices(full=False):
+    """Index rows by upper-case name. The headline and sector indices come from Zerodha when it is connected; NSE supplies the rest (full=True: every index NSE lists, for the chart page)
+    and everything when Zerodha is not connected or does not answer."""
+    need = HEADLINE_INDICES + [ix for _, ix in SECTOR_INDICES]
+    ttl = LIVE_TTL if marketclock.in_session_hours(time.time()) else 600
+    kite = store.cached("live:kite-indices", ttl, lambda: kitedata.indices(need)) if kitedata.active("quote") else {}
+    if kite and not full and all(n.upper() in kite for n in need):
+        return kite
+    try:
+        by = _nse_indices()
+    except Exception:
+        if kite:
+            return kite
+        raise
+    return dict(by, **kite)
+
+
 def live_feed(symbols):
     """Everything the screens repaint every second: headline indices, sector tiles and the requested stocks (at most 40). Failures degrade to what is cached."""
     t = time.time()
     state = marketclock.market_state(t)
     out = {"t": int(t * 1000), "market": state, "intervalMs": FEED_MS if state["live"] else 30000, "indices": [], "sectorIndices": [], "quotes": []}
+    listed, wanted = [], []
+    for raw in symbols[:40]:
+        sym = (raw or "").strip().upper()
+        if SYMBOL_RE.match(sym) and sym not in listed and sym not in wanted:
+            (wanted if sym.startswith(INDEX_PREFIX) else listed).append(sym)
+    kitedata.prefetch(listed, HEADLINE_INDICES + [ix for _, ix in SECTOR_INDICES])   # Zerodha: stocks and indices in one call; a no-op when not connected
     try:
         by = _live_indices()
         row = lambda lv, name: {"name": lv.get("indexName") or name, "last": lv.get("last"), "prev": lv.get("previousClose"), "pct": lv.get("percChange")}
@@ -517,13 +560,10 @@ def live_feed(symbols):
                 out["sectorIndices"].append({"sector": sec, "index": lv.get("indexName") or ix, "pct": lv.get("percChange")})
     except Exception as e:
         out["indicesError"] = str(e)[:120]
-    listed, wanted = [], []
-    for raw in symbols[:40]:
-        sym = (raw or "").strip().upper()
-        if SYMBOL_RE.match(sym) and sym not in listed and sym not in wanted:
-            (wanted if sym.startswith(INDEX_PREFIX) else listed).append(sym)
     try:   # indices on screen (the chart page) come back as quotes under their IDX_ key; the headline and sector indices are recorded for intraday charts
         by = _live_indices()
+        if any(k not in {index_key(n) for n in by} for k in wanted):
+            by = _live_indices(full=True)
         keyed = {index_key(n): lv for n, lv in by.items()}
         in_session = marketclock.in_session_hours(t)
         for key in wanted:
@@ -544,7 +584,8 @@ def live_feed(symbols):
         pass
     if listed:
         for q in quotes(listed, state)["quotes"]:
-            out["quotes"].append({k: q.get(k) for k in ("sym", "price", "prev", "abs", "chg", "open", "high", "low", "volume", "valueCr", "ts", "ageMs", "status", "hi52", "lo52")})
+            out["quotes"].append({k: q.get(k) for k in ("sym", "price", "prev", "abs", "chg", "open", "high", "low", "volume", "valueCr", "ts", "ageMs", "status", "hi52", "lo52", "source")})
+    out["source"] = "zerodha" if kitedata.active("quote") and kitedata._used["quote"] == "zerodha" else "nse"
     return out
 
 
