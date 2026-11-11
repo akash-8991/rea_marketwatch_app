@@ -163,7 +163,7 @@ password twice). `marketlens --list-users` shows who is registered.
 ## 10. For developers
 ```bash
 pip install -e .
-PYTHONPATH=src python3 -m unittest discover -s tests          # 198 offline tests, no network needed
+PYTHONPATH=src python3 -m unittest discover -s tests          # 229 offline tests, no network needed
 python3 tools/loadtest.py --url http://127.0.0.1:8080 --concurrency 1 16 --seconds 8 --cookie "ml_session=<cookie>"
 python3 -m pip wheel . --no-deps -w dist                       # build the wheel (needs setuptools)
 ```

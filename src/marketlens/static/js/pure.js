@@ -92,3 +92,16 @@ export function applyFeed(D, bySym, r) {
   if (r.market) D.market = r.market;
   return changed;
 }
+
+/* Terminal-style mnemonics: "INFY GP" (graph) opens the chart, "INFY DES" the stock page, "INFY OPT" the option chain, "INFY SIG" the signals, "INFY FA" the fundamentals, "INFY N" the news.
+ * One-word commands: TOP/HOME, MKT, SCRN, WATCH, PAPER, SIG, ORD, OPS, FUND, SET, NEWS. */
+export function mnemonic(q) {
+  const t = q.trim().toUpperCase().split(/\s+/);
+  const pages = { TOP: '#/', HOME: '#/', MKT: '#/markets', MOST: '#/markets', SCRN: '#/screener', EQS: '#/screener', OMON: '#/options', OPT: '#/options', WATCH: '#/watchlist', WL: '#/watchlist', PAPER: '#/paper', PORT: '#/paper', SIG: '#/signals', SIGNALS: '#/signals', ORD: '#/orders', ORDERS: '#/orders', RISK: '#/orders', OPS: '#/ops', FUND: '#/fundamentals', FA: '#/fundamentals', SET: '#/settings', SETTINGS: '#/settings', NEWS: '#/news', N: '#/news', CHART: '#/chart', GP: '#/chart', UPD: '#/updates' };
+  if (t.length === 1 && pages[t[0]]) return { hash: pages[t[0]], label: `${t[0]} → ${pages[t[0]].replace('#/', '') || 'home'}` };
+  if (t.length === 2 && /^[A-Z0-9&_-]{1,24}$/.test(t[0])) {
+    const s = encodeURIComponent(t[0]), fn = { GP: `#/chart/${s}`, G: `#/chart/${s}`, CHART: `#/chart/${s}`, DES: `#/quote/${s}`, EQ: `#/quote/${s}`, Q: `#/quote/${s}`, FA: `#/quote/${s}/analysis`, OPT: '#/options', OMON: '#/options', SIG: `#/signals/${s}`, N: `#/quote/${s}/news`, NEWS: `#/quote/${s}/news` }[t[1]];
+    if (fn) return { hash: fn, label: `${t[0]} ${t[1]} → ${fn.split('/')[1]}` };
+  }
+  return null;
+}

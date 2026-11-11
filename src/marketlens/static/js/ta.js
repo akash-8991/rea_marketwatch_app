@@ -232,3 +232,63 @@ export function analyse(cs, ind = indicators(cs), tf = '1D') {
   return { ok: true, score, verdict: label(score), trendScore: trend, momentumScore: mom, signals: sig, levels: lv, pivots: piv, fib, candlePatterns: cp, chartPatterns: chp, atr: a, atrPct, text: parts.join(' '), price: px, candles: n,
     enough: { sma200: v(ind.sma200) != null, sma50: v(ind.sma50) != null } };
 }
+
+/* ---------- more OHLC indicators (used by the OHLC strategies in strategies-ohlc.js) ---------- */
+/** Parabolic SAR (Wilder): a trailing stop that accelerates with the trend. dir 1 = long (SAR under price), -1 = short. */
+export function psar(cs, step = 0.02, max = 0.2) {
+  const sar = cs.map(() => null), dir = cs.map(() => 0); if (cs.length < 2) return { sar, dir };
+  let up = cs[1].c >= cs[0].c, af = step, ep = up ? Math.max(cs[0].h, cs[1].h) : Math.min(cs[0].l, cs[1].l), s = up ? Math.min(cs[0].l, cs[1].l) : Math.max(cs[0].h, cs[1].h);
+  sar[1] = s; dir[1] = up ? 1 : -1;
+  for (let i = 2; i < cs.length; i++) {
+    s = s + af * (ep - s);
+    if (up) { s = Math.min(s, cs[i - 1].l, cs[i - 2].l); if (cs[i].l < s) { up = false; s = ep; ep = cs[i].l; af = step; } else if (cs[i].h > ep) { ep = cs[i].h; af = Math.min(max, af + step); } }
+    else { s = Math.max(s, cs[i - 1].h, cs[i - 2].h); if (cs[i].h > s) { up = true; s = ep; ep = cs[i].h; af = step; } else if (cs[i].l < ep) { ep = cs[i].l; af = Math.min(max, af + step); } }
+    sar[i] = s; dir[i] = up ? 1 : -1;
+  }
+  return { sar, dir };
+}
+
+const hh = (cs, i, n) => Math.max(...cs.slice(Math.max(0, i + 1 - n), i + 1).map((x) => x.h)), ll = (cs, i, n) => Math.min(...cs.slice(Math.max(0, i + 1 - n), i + 1).map((x) => x.l));
+/** Ichimoku: tenkan, kijun and the cloud (spans A and B as they stand at each bar, i.e. computed `kijun` bars earlier). */
+export function ichimoku(cs, t = 9, k = 26, s = 52) {
+  const tenkan = cs.map((_, i) => (i + 1 < t ? null : (hh(cs, i, t) + ll(cs, i, t)) / 2)), kijun = cs.map((_, i) => (i + 1 < k ? null : (hh(cs, i, k) + ll(cs, i, k)) / 2));
+  const rawA = cs.map((_, i) => (tenkan[i] == null || kijun[i] == null ? null : (tenkan[i] + kijun[i]) / 2)), rawB = cs.map((_, i) => (i + 1 < s ? null : (hh(cs, i, s) + ll(cs, i, s)) / 2));
+  return { tenkan, kijun, spanA: cs.map((_, i) => (i - k >= 0 ? rawA[i - k] : null)), spanB: cs.map((_, i) => (i - k >= 0 ? rawB[i - k] : null)) };
+}
+
+/** Aroon up and down: how recently the highest high and lowest low of the last n bars occurred (0 to 100). */
+export function aroon(cs, n = 25) {
+  const up = [], dn = [];
+  for (let i = 0; i < cs.length; i++) {
+    if (i < n) { up.push(null); dn.push(null); continue; }
+    const w = cs.slice(i - n, i + 1); let hi = 0, lo = 0; w.forEach((c, k) => { if (c.h >= w[hi].h) hi = k; if (c.l <= w[lo].l) lo = k; });
+    up.push((100 * hi) / n); dn.push((100 * lo) / n);
+  }
+  return { up, down: dn };
+}
+
+/** Williams %R from highs and lows (-100 to 0). */
+export const williamsR = (cs, n = 14) => cs.map((c, i) => { if (i + 1 < n) return null; const h = hh(cs, i, n), l = ll(cs, i, n); return h === l ? -50 : (-100 * (h - c.c)) / (h - l); });
+
+/** Money Flow Index: a volume-weighted RSI on the typical price (0 to 100). */
+export function mfi(cs, n = 14) {
+  const tp = cs.map((c) => (c.h + c.l + c.c) / 3), out = cs.map(() => null);
+  for (let i = n; i < cs.length; i++) { let p = 0, q = 0; for (let k = i - n + 1; k <= i; k++) { const f = tp[k] * cs[k].v; if (tp[k] > tp[k - 1]) p += f; else if (tp[k] < tp[k - 1]) q += f; } out[i] = q === 0 ? 100 : 100 - 100 / (1 + p / q); }
+  return out;
+}
+
+/** Chaikin Money Flow: where closes sit in the range, weighted by volume, over n bars (-1 to +1). */
+export const cmf = (cs, n = 20) => cs.map((_, i) => { if (i + 1 < n) return null; let a = 0, v = 0; for (let k = i + 1 - n; k <= i; k++) { const r = cs[k].h - cs[k].l; a += r ? ((cs[k].c - cs[k].l - (cs[k].h - cs[k].c)) / r) * cs[k].v : 0; v += cs[k].v; } return v ? a / v : null; });
+
+/** Heikin-Ashi candles: smoothed candles that make a trend easier to see. */
+export function heikinAshi(cs) {
+  const out = []; let po = null, pc = null;
+  for (const c of cs) { const close = (c.o + c.h + c.l + c.c) / 4, open = po == null ? (c.o + c.c) / 2 : (po + pc) / 2; out.push({ t: c.t, o: open, h: Math.max(c.h, open, close), l: Math.min(c.l, open, close), c: close, v: c.v }); po = open; pc = close; }
+  return out;
+}
+
+/** Keltner channel: EMA of the close +/- mult x ATR. */
+export function keltner(cs, n = 20, atrN = 10, mult = 2) {
+  const mid = ema(cs.map((c) => c.c), n).map((v, i) => (i + 1 < n ? null : v)), a = atr(cs, atrN);
+  return { mid, upper: mid.map((m, i) => (m == null || a[i] == null ? null : m + mult * a[i])), lower: mid.map((m, i) => (m == null || a[i] == null ? null : m - mult * a[i])) };
+}

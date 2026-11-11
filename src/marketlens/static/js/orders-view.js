@@ -1,0 +1,71 @@
+/* Orders & risk page: the order blotter with each order's state history, intents waiting for approval, the risk limits and the last decision's checks, a ticket that sends
+ * a hand-made order through the same risk engine, and reconciliation. Orders on the paper account also appear on the Paper trading page. */
+import { $, $$, esc, money, signed, api, store } from './lib.js';
+import { toast, buttonClass, confirmDialog } from './ui.js';
+import * as C from './desk-core.js';
+import * as desk from './desk.js';
+import { viewTabs, bindViewTabs, kpi, stateBadge, when, rupee } from './desk-ui.js';
+
+const LIMIT_FIELDS = [['maxOrderValue', 'Max order value (₹)', 1000, 1e8, 1000], ['maxPositionPct', 'Max one position (% of account)', 1, 100, 1], ['maxGrossPct', 'Max gross exposure (% of account)', 1, 300, 5], ['maxSectorPct', 'Max one sector (% of account)', 1, 100, 1],
+  ['perTradeRiskPct', 'Risk per trade (% of account)', 0.1, 10, 0.1], ['dailyLossPct', 'Daily loss limit (% of account)', 0.5, 50, 0.5], ['maxOpenOrders', 'Max open orders', 1, 100, 1], ['maxOps', 'Max orders per second', 1, 10, 1], ['duplicateWindowSec', 'Duplicate window (s)', 10, 3600, 10],
+  ['staleSeconds', 'Quote stale after (s)', 2, 600, 1], ['maxDeviationPct', 'Max limit-price distance (%)', 0.1, 10, 0.1], ['minLiquidityCr', 'Min traded value (₹ Cr)', 0, 1000, 0.5], ['slippageBps', 'Slippage cap (bps)', 1, 200, 1], ['tickSize', 'Tick size (₹)', 0.01, 5, 0.01]];
+
+export function mount(root, { D, bySym }) {
+  let alive = true; const S = { tab: store.get('ml.ord.tab', 'blotter'), brokerSt: null, open: null };
+  const sectorOf = (s) => (bySym[s] && bySym[s].sector) || 'Other', prices = () => Object.fromEntries(D.stocks.map((s) => [s.sym, s.price]));
+  root.innerHTML = `<div class="grid gap-3"><div><h1 class="m-0">Orders &amp; risk</h1><p class="m-0 mt-1 text-sm text-muted-foreground">Every intent is checked by the risk engine before it can become an order. Mode and the kill switch are on the Operator page.</p></div><div id="or-head"></div>
+    ${viewTabs('or-tabs', [['blotter', 'Order blotter'], ['approve', 'Approvals'], ['risk', 'Risk limits'], ['ticket', 'Test ticket'], ['recon', 'Reconcile']], S.tab, 'Orders and risk sections')}<div id="or-body"></div></div>`;
+  bindViewTabs(root, 'or-tabs', (t) => { S.tab = t; store.set('ml.ord.tab', t); paint(); });
+  const head = () => { const d = desk.load(), live = d.orders.filter((o) => !C.TERMINAL.has(o.status)).length, filled = d.orders.filter((o) => o.status === 'FILLED').length, rej = d.orders.filter((o) => o.status === 'REJECTED').length;
+    $('#or-head', root).innerHTML = `<div class="desk-kpis">${kpi('Mode', esc(C.MODES.find((m) => m[0] === d.mode)[1]), d.mode === 'live' ? 'orders go to Zerodha' : '')}${kpi('Kill switch', d.kill.global ? '<span class="down">ON</span>' : 'off', esc(d.kill.reason || ''))}${kpi('Orders', d.orders.length, `${filled} filled · ${rej} rejected`)}${kpi('Open', live)}${kpi('Waiting for approval', d.intents.filter((i) => i.status === 'awaiting_approval').length)}</div>`; };
+
+  function blotter() {
+    const d = desk.load();
+    return `<section class="card"><h2>Order blotter</h2><div class="scroll"><table class="tbl"><caption class="sr-only">Orders</caption><thead><tr><th>Time</th><th>Stock</th><th>Side</th><th class="num">Qty</th><th class="num">Limit</th><th class="num">Filled</th><th class="num">Avg price</th><th>State</th><th>Broker</th><th></th></tr></thead><tbody>
+      ${d.orders.map((o) => `<tr><td>${when(o.updated_at)}</td><td><a href="#/quote/${encodeURIComponent(o.sym)}">${esc(o.sym)}</a></td><td class="${o.side === 'BUY' ? 'up' : 'down'}">${o.side}</td><td class="num">${o.quantity}</td><td class="num">${money(o.limit_price)}</td><td class="num">${o.filled_quantity}</td><td class="num">${o.average_price ? money(o.average_price) : '—'}</td><td>${stateBadge(o.status)}</td><td>${esc((o.broker_order_id || '').toString().startsWith('PAPER') ? 'paper' : (o.broker_order_id || '').toString().startsWith('SHADOW') ? 'shadow' : o.broker_order_id ? 'zerodha' : '—')}</td>
+        <td class="num"><button type="button" class="btn small" data-hist="${esc(o.client_order_id)}">History</button>${['ACKNOWLEDGED', 'SUBMITTED', 'PARTIALLY_FILLED'].includes(o.status) ? ` <button type="button" class="btn small" data-cancel="${esc(o.client_order_id)}">Cancel</button>` : ''}</td></tr>
+        ${S.open === o.client_order_id ? `<tr><td colspan="10" class="note">${o.history.map((h) => `${when(h.at)} <b>${esc(h.state)}</b> ${esc(h.note || '')}`).join('<br>')}<br>Tag <code>${esc(o.client_order_id)}</code> · intent <code>${esc(o.intent_id)}</code></td></tr>` : ''}`).join('') || '<tr><td colspan="10" class="muted">No orders yet. Create an intent on the Signals page or use the Test ticket.</td></tr>'}</tbody></table></div></section>`;
+  }
+  function approvals() {
+    const d = desk.load(), q = d.intents.filter((i) => i.status === 'awaiting_approval');
+    return `<section class="card"><h2>Waiting for your approval</h2>${q.length ? q.map((i) => { const dec = d.decisions[i.intent_id]; return `<div class="card"><b>${i.side} ${i.quantity} ${esc(i.sym)}</b> limit ${money(i.limit_price)} · stop ${money(i.stop_loss)} · target ${money(i.target)} · value ${rupee(i.quantity * i.limit_price)}<div class="note">Score ${i.rationale.score} · confidence ${i.rationale.confidence} · ${esc((i.rationale.reason_codes || []).join(', '))} · broker ${esc(d.broker === 'zerodha' ? 'Zerodha' : 'paper')}</div>
+      <div class="mt-2"><button type="button" class="btn on" data-ok="${esc(i.intent_id)}">Approve and send</button> <button type="button" class="btn" data-no="${esc(i.intent_id)}">Reject</button></div>${dec ? `<div class="note mt-2">Risk engine at ${when(dec.decided_at)}: ${dec.checks.filter((c) => c.ok).length} of ${dec.checks.length} checks passed. The checks run again when you approve.</div>` : ''}</div>`; }).join('') : '<p class="muted">Nothing is waiting. In Manual approval mode, approved intents wait here.</p>'}</section>
+      <section class="card"><h2>Recent intents</h2><div class="scroll"><table class="tbl"><thead><tr><th>Time</th><th>Stock</th><th>Side</th><th class="num">Qty</th><th class="num">Limit</th><th>Status</th><th>Risk decision</th></tr></thead><tbody>${d.intents.slice(0, 25).map((i) => { const dec = d.decisions[i.intent_id]; return `<tr><td>${when(i.created_at)}</td><td>${esc(i.sym)}</td><td class="${i.side === 'BUY' ? 'up' : 'down'}">${i.side}</td><td class="num">${i.quantity}</td><td class="num">${money(i.limit_price)}</td><td>${stateBadge(i.status)}</td><td>${dec ? stateBadge(dec.decision.toLowerCase()) + ` <span class="note">${esc(dec.reason_codes.join(', '))}</span>` : '—'}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">None.</td></tr>'}</tbody></table></div></section>`;
+  }
+  function risk() {
+    const d = desk.load(), last = Object.values(d.decisions).sort((a, b) => b.decided_at - a.decided_at)[0];
+    return `<section class="card"><h2>Risk limits</h2><div class="desk-form" id="rk-form">${LIMIT_FIELDS.map(([k, l, lo, hi, st]) => `<label>${esc(l)}<input data-l="${k}" type="number" min="${lo}" max="${hi}" step="${st}" value="${d.limits[k]}"></label>`).join('')}
+      <label>Market orders<select data-l="marketOrders"><option value="0">Off (limit orders only)</option><option value="1" ${d.limits.marketOrders ? 'selected' : ''}>On</option></select></label><label>Short selling<select data-l="allowShort"><option value="0">Off</option><option value="1" ${d.limits.allowShort ? 'selected' : ''}>On</option></select></label>
+      <label>Only during market hours<select data-l="sessionOnly"><option value="1">Yes</option><option value="0" ${d.limits.sessionOnly ? '' : 'selected'}>No (testing)</option></select></label><div><button type="button" id="rk-save" class="${buttonClass({})}">Save limits</button></div></div>
+      <p class="note mt-2">Every check always runs and every failure is reported; a failed check is never downgraded. The Zerodha gate on the server applies its own, separate caps (order value, orders per second, limit orders only, kill switch).</p></section>
+      <section class="card"><h2>Last risk decision ${last ? `<span class="muted">${when(last.decided_at)}</span>` : ''}</h2>${last ? `<div class="scroll"><table class="tbl"><thead><tr><th>Check</th><th>Result</th><th>Detail</th></tr></thead><tbody>${last.checks.map((c) => `<tr><td>${esc(c.code)}</td><td>${stateBadge(c.ok ? 'approve' : 'reject')}</td><td class="note">${c.ok ? '' : esc(c.detail)}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">No decision yet.</p>'}</section>`;
+  }
+  function ticket() {
+    return `<section class="card"><h2>Test ticket</h2><p class="note">Send a hand-made order through the full pipeline (risk engine, then the mode's broker). Use it to see how the limits behave.</p><div class="desk-form"><label>Stock<input id="tk-sym" value="RELIANCE" maxlength="24"></label><label>Side<select id="tk-side"><option>BUY</option><option>SELL</option></select></label>
+      <label>Quantity<input id="tk-qty" type="number" min="1" value="1"></label><label>Limit price (blank = last price)<input id="tk-px" type="number" step="0.05" min="0"></label><div><button type="button" id="tk-go" class="${buttonClass({})}">Check and send</button></div></div><div id="tk-out" class="mt-2"></div></section>`;
+  }
+  function recon() {
+    return `<section class="card"><h2>Reconciliation</h2><p class="note">Compares the desk's filled orders with the paper account's positions, and re-queries unknown and open orders at the broker. Three breaks in a row pause trading.</p><button type="button" id="rc-go" class="${buttonClass({})}">Reconcile now</button><div id="rc-out" class="mt-2"></div></section>`;
+  }
+  function paint() {
+    head(); const b = $('#or-body', root); b.innerHTML = { blotter, approve: approvals, risk, ticket, recon }[S.tab]();
+    $$('[data-hist]', b).forEach((x) => x.addEventListener('click', () => { S.open = S.open === x.dataset.hist ? null : x.dataset.hist; paint(); }));
+    $$('[data-cancel]', b).forEach((x) => x.addEventListener('click', async () => { const d = desk.load(), o = d.orders.find((y) => y.client_order_id === x.dataset.cancel); if (!o) return; try { if (o.broker_order_id && !String(o.broker_order_id).startsWith('PAPER') && !String(o.broker_order_id).startsWith('SHADOW')) await desk.post('/api/broker/cancel', { orderId: o.broker_order_id }); desk.save({ ...d, orders: d.orders.map((y) => (y === o ? C.advance(C.advance(y, 'CANCEL_REQUESTED'), 'CANCELLED', Date.now(), 'cancelled by user') : y)) }); await desk.log('order_cancel', { client_order_id: o.client_order_id }); paint(); } catch (e) { toast.error('Could not cancel', e.message); } }));
+    $$('[data-ok]', b).forEach((x) => x.addEventListener('click', async () => { x.disabled = true; try { const sym = desk.load().intents.find((i) => i.intent_id === x.dataset.ok).sym, quote = await desk.quoteFor(sym), r = await desk.approve(x.dataset.ok, { quote, prices: { ...prices(), [sym]: quote.price }, sectorOf, brokerStatus: await desk.brokerStatus() }); r.decision.decision === 'REJECT' ? toast.error('Risk engine rejected it', r.decision.failures.map((f) => f.code).join(', ')) : toast.success('Sent', r.order ? r.order.status : ''); } catch (e) { toast.error('Approval failed', e.message); } paint(); }));
+    $$('[data-no]', b).forEach((x) => x.addEventListener('click', async () => { await desk.rejectIntent(x.dataset.no); paint(); }));
+    $('#rk-save', b)?.addEventListener('click', async () => { const d = desk.load(); $$('[data-l]', b).forEach((i) => { const k = i.dataset.l; d.limits[k] = ['marketOrders', 'allowShort', 'sessionOnly'].includes(k) ? i.value === '1' : Math.max(+i.min, Math.min(+i.max, +i.value || d.limits[k])); }); desk.save(d); await desk.log('limits_changed', d.limits); toast.success('Limits saved', ''); paint(); });
+    $('#tk-go', b)?.addEventListener('click', async () => {
+      const out = $('#tk-out', b), sym = $('#tk-sym', b).value.trim().toUpperCase(); out.textContent = 'Checking…';
+      try { const d = desk.load(), q = await desk.quoteFor(sym), px = +$('#tk-px', b).value || q.price, pr = { ...prices(), [sym]: q.price };
+        const it = { ...C.buildIntent({ fused: { direction: $('#tk-side', b).value, score: 0, confidence: 0, components: {}, reason_codes: ['manual_ticket'], version: 'manual' }, sym, price: q.price, atr: null, equity: desk.accountContext(pr, sectorOf).account.equity, limits: d.limits, strategyId: 'manual', sector: sectorOf(sym) }),
+          quantity: Math.max(1, Math.floor(+$('#tk-qty', b).value || 1)), side: $('#tk-side', b).value, limit_price: Math.round(px / d.limits.tickSize) * d.limits.tickSize };
+        it.limit_price = Math.round(it.limit_price * 100) / 100; it.intent_id = `i-${Date.now().toString(36)}`; it.client_order_id = `ML${Date.now().toString(36)}`.slice(0, 20); it.idempotency_key = C.hash32(it.client_order_id);
+        const r = await desk.submit(it, { quote: q, prices: pr, sectorOf, brokerStatus: await desk.brokerStatus() }), dec = r.decision;
+        out.innerHTML = `${stateBadge(dec.decision.toLowerCase())} ${dec.decision === 'REJECT' ? dec.failures.map((f) => `<div class="note"><b>${esc(f.code)}</b>: ${esc(f.detail)}</div>`).join('') : r.queued ? 'Waiting for your approval (Approvals tab).' : r.order ? `Order ${stateBadge(r.order.status)}` : esc(r.note || '')}`; head();
+      } catch (e) { out.innerHTML = `<span class="down">${esc(e.message)}</span>`; }
+    });
+    $('#rc-go', b)?.addEventListener('click', async () => { const out = $('#rc-out', b); out.textContent = 'Reconciling…'; try { const r = await desk.reconcileAll(); out.innerHTML = r.ok ? `${stateBadge('approve')} No breaks${r.changed ? `; ${r.changed} order(s) updated from the broker` : ''}.` : `${stateBadge('reject')} ${r.breaks.map((x) => `${esc(x.sym)}: desk ${x.desk}, account ${x.account}`).join(' · ')}`; head(); } catch (e) { out.innerHTML = `<span class="down">${esc(e.message)}</span>`; } });
+  }
+  paint(); const t = setInterval(() => { if (!alive || !document.body.contains(root)) { clearInterval(t); return; } if (S.tab === 'blotter' || S.tab === 'approve') paint(); }, 5000);
+  return () => { alive = false; clearInterval(t); };
+}

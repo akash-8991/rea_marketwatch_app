@@ -13,6 +13,7 @@ import time
 DEFAULT_LIMITS = {
     "static": (400, 200.0),     # HTML, JS, CSS
     "read": (300, 100.0),       # cheap API reads served from local snapshots
+    "broker": (30, 5.0),        # Zerodha connection and orders (the broker gate has its own orders-per-second cap)
     "live": (120, 40.0),        # the one-second feed (answered from a one-second cache; upstream calls have their own budget)
     "expensive": (40, 4.0),     # may call NSE, Yahoo or Google (stock detail, search, news, option chain)
     "write": (10, 0.5),         # CSV import, web vitals

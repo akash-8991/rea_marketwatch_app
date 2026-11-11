@@ -22,7 +22,7 @@ import uuid
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import accounts, analysis, market, marketclock, news, nse, optiondb, options, ratelimit, scheduler, securities, store
+from . import broker, accounts, analysis, market, marketclock, news, nse, optiondb, options, ratelimit, scheduler, securities, store
 from .config import settings
 from .metrics import metrics
 
@@ -32,7 +32,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
 MAX_UPLOAD = optiondb.MAX_CSV_BYTES
 LOOPBACK = ("127.0.0.1", "localhost", "::1", "[::1]")
 RID_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
-KNOWN_ROUTES = {"/healthz", "/readyz", "/api/config", "/api/bootstrap", "/api/live", "/api/listings", "/api/extras", "/api/sentiment", "/api/search", "/api/options",
+KNOWN_ROUTES = {"/api/broker/status", "/api/broker/login-url", "/api/broker/account", "/api/broker/credentials", "/api/broker/session", "/api/broker/order", "/api/broker/cancel", "/api/broker/logout", "/api/broker/forget", "/api/broker/kill", "/healthz", "/readyz", "/api/config", "/api/bootstrap", "/api/live", "/api/listings", "/api/extras", "/api/sentiment", "/api/search", "/api/options",
                 "/api/options/meta", "/api/options/import", "/api/audit", "/api/metrics", "/api/vitals",
                 "/api/auth/status", "/api/auth/me", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/forgot-user-id", "/api/auth/update-credentials"}
 PUBLIC_API = {"/api/auth/status", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/forgot-user-id", "/api/auth/update-credentials"}
@@ -159,6 +159,8 @@ def route_label(path):
         return "/api/history/:sym"
     if path.startswith("/api/intraday/"):
         return "/api/intraday/:sym"
+    if path.startswith("/api/broker/order/"):
+        return "/api/broker/order/:id"
     if path.startswith("/api/candles/"):
         return "/api/candles/:sym"
     if path.startswith("/api/news/stock/"):
@@ -176,6 +178,8 @@ def classify(method, path):
         return None
     if path == "/api/live":
         return "live"
+    if path.startswith("/api/broker/"):
+        return "broker"
     if method == "POST":
         return "auth" if path.startswith("/api/auth/") else "write"
     if path.startswith(("/api/stock/", "/api/peers/", "/api/quote/", "/api/quotes", "/api/history/", "/api/intraday/", "/api/candles/", "/api/search", "/api/news/")) or path == "/api/options":
@@ -440,6 +444,47 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(e.status, str(e), {"Retry-After": str(e.retry_after)} if e.retry_after else None, **more)
         return self._error(404, "not found")
 
+    def _broker_post(self, path):
+        if self.headers.get("X-Requested-With") != "MarketLens":
+            return self._error(403, "missing X-Requested-With header")
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if not 0 <= length <= MAX_AUTH_BODY:
+            return self._error(413, "request body too large")
+        body = {}
+        if length:
+            if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
+                return self._error(415, "send application/json")
+            raw = self.rfile.read(length)
+            self._body_read = True
+            try:
+                body = json.loads(raw)
+                if not isinstance(body, dict):
+                    raise ValueError
+            except ValueError:
+                return self._error(400, "invalid JSON")
+        s = lambda k, n=200: body.get(k) if isinstance(body.get(k), str) and len(body.get(k)) <= n else ""
+        try:
+            if path == "/api/broker/credentials":
+                return self._json(broker.save_credentials(s("apiKey", 60), s("apiSecret", 60)))
+            if path == "/api/broker/session":
+                return self._json(broker.exchange(s("requestToken", 80)))
+            if path == "/api/broker/logout":
+                return self._json(broker.logout())
+            if path == "/api/broker/forget":
+                return self._json(broker.forget())
+            if path == "/api/broker/kill":
+                return self._json({"killSwitch": broker.set_kill(bool(body.get("on")), s("reason", 120))})
+            if path == "/api/broker/order":
+                return self._json(broker.place_order(body.get("order") if isinstance(body.get("order"), dict) else {}))
+            if path == "/api/broker/cancel":
+                return self._json(broker.cancel_order(s("orderId", 40)) or {"ok": True})
+        except broker.BrokerError as e:
+            return self._error(e.status, str(e))
+        return self._error(404, "not found")
+
     # --- routing
     def _route(self, method, path):
         u = urllib.parse.urlparse(self.path)
@@ -452,6 +497,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/readyz":
             r = readiness()
             return self._json(r, 200 if r["ready"] else 503)
+        if path == "/broker/callback":
+            return self._broker_callback(u)
         if not path.startswith("/api/"):
             return self._static(path)
         if method == "HEAD":
@@ -463,6 +510,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(502, str(e)[:300])
         except Exception as e:  # upstream failure: report it, never crash the server
             return self._error(502, str(e)[:300])
+
+    def _broker_callback(self, u):
+        """Zerodha sends the browser back here with ?request_token=...&status=success&state=... after you sign in on their page."""
+        qs = urllib.parse.parse_qs(u.query)
+        if settings.require_login and not self.user:
+            return self._error(401, "Sign in to MarketLens first, then connect Zerodha again.")
+        ok, msg = False, "failed"
+        if qs.get("status", [""])[0] != "success":
+            msg = "Zerodha reported that the login did not complete."
+        elif not broker.check_state(qs.get("state", [""])[0]):
+            msg = "The login link expired or was not started from this app. Start again from Settings."
+        else:
+            try:
+                broker.exchange(qs.get("request_token", [""])[0])
+                ok, msg = True, "connected"
+            except broker.BrokerError as e:
+                msg = str(e)[:150]
+        loc = "/#/settings?broker=" + ("ok" if ok else "error&msg=" + urllib.parse.quote(msg))
+        self._send(302, b"", "text/plain", {"Location": loc, "Cache-Control": "no-store"})
 
     def _static(self, path):
         entry = load_static(urllib.parse.unquote(path))
@@ -499,6 +565,29 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             sym = urllib.parse.unquote(m.group(1)).upper()
             return self._json(market.quote(sym, fresh=bool(qs.get("fresh")))) if market.SYMBOL_RE.match(sym) else self._error(400, "bad symbol")
+        if p == "/api/broker/status":
+            return self._json(broker.status())
+        if p == "/api/broker/login-url":
+            try:
+                return self._json(broker.login_url())
+            except broker.BrokerError as e:
+                return self._error(e.status, str(e))
+        if p == "/api/broker/account":
+            try:
+                return self._json(broker.account())
+            except broker.BrokerError as e:
+                return self._error(e.status, str(e))
+        m = re.match(r"^/api/broker/order/([0-9A-Za-z]{1,30})$", p)
+        if m:
+            try:
+                return self._json(broker.order_status(order_id=m.group(1)) or {"status": None})
+            except broker.BrokerError as e:
+                return self._error(e.status, str(e))
+        if p == "/api/broker/order":   # lookup by tag (the order id is unknown after a timeout)
+            try:
+                return self._json(broker.order_status(tag=qs.get("tag", [""])[0]) or {"status": None})
+            except broker.BrokerError as e:
+                return self._error(e.status, str(e))
         if p == "/api/listings":
             try:
                 days = max(1, min(365, int(qs.get("days", ["60"])[0])))
@@ -576,6 +665,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._auth_post(u.path)
         if settings.require_login and not self.user:
             return self._error(401, "authentication required")
+        if u.path.startswith("/api/broker/"):
+            return self._broker_post(u.path)
         if u.path == "/api/vitals":
             return self._vitals()
         if u.path != "/api/options/import":

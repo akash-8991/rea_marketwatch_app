@@ -34,6 +34,7 @@ class Settings:
     max_connections: int = 256     # open connections before new ones are refused
     log_requests: bool = True      # one JSON line per API request on stderr
     require_login: bool = True     # accounts: every API call except sign-up/sign-in/recovery needs a session (--no-login turns it off)
+    live_orders: bool = field(default_factory=lambda: os.environ.get("MARKETLENS_LIVE_ORDERS", "") == "1")   # allow real orders through the Zerodha adapter (off unless --enable-live-orders)
     pbkdf2_iterations: int = 600_000   # password hashing cost (OWASP 2023 guidance for PBKDF2-SHA256)
 
 

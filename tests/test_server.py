@@ -105,3 +105,69 @@ class ServerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BrokerRouteTests(ServerTests):
+    """The Settings > Broker endpoints over real HTTP, with Kite faked: secrets never leave, the CSRF header is required, the callback verifies its state."""
+    def post(self, path, body=None, headers=None):
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        raw = json.dumps(body or {}).encode()
+        c.request("POST", path, raw, dict({"Content-Type": "application/json", "X-Requested-With": "MarketLens"}, **(headers or {})))
+        r = c.getresponse()
+        out = r.read()
+        c.close()
+        return r.status, json.loads(out or b"{}")
+
+    def setUp(self):
+        from marketlens import broker
+        self.broker = broker
+        self.saved_http = broker._http
+        broker._tags.clear()
+        broker._states.clear()
+        self.addCleanup(setattr, broker, "_http", self.saved_http)
+        self.addCleanup(lambda: [p.unlink() for p in Path(self.tmp.name).glob("broker*") if p.exists()])
+        calls = self.calls = []
+
+        def fake(method, url, headers=None, data=None, timeout=12):
+            calls.append((method, url))
+            if "/session/token" in url and method == "POST":
+                return 200, json.dumps({"status": "success", "data": {"access_token": "TOKEN12345", "user_id": "AB1234", "user_name": "T"}}).encode()
+            return 200, json.dumps({"status": "success", "data": []}).encode()
+        broker._http = fake
+
+    def test_status_credentials_and_secrets(self):
+        status, _, body = self.get("/api/broker/status")
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(body)["liveOrdersEnabled"])
+        code, st = self.post("/api/broker/credentials", {"apiKey": "APIKEY12345", "apiSecret": "SECRET123"})
+        self.assertEqual(code, 200)
+        self.assertNotIn("SECRET123", json.dumps(st))
+        self.assertNotIn(b"SECRET123", self.get("/api/broker/status")[2])
+        self.assertEqual(self.post("/api/broker/credentials", {"apiKey": "x y", "apiSecret": "z"})[0], 400)
+
+    def test_posts_need_the_csrf_header_and_json(self):
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        c.request("POST", "/api/broker/kill", b"{}", {"Content-Type": "application/json"})
+        self.assertEqual(c.getresponse().status, 403)
+
+    def test_login_callback_checks_its_state_then_connects(self):
+        self.post("/api/broker/credentials", {"apiKey": "APIKEY12345", "apiSecret": "SECRET123"})
+        status, _, body = self.get("/api/broker/login-url")
+        url = json.loads(body)["url"]
+        self.assertTrue(url.startswith("https://kite.zerodha.com/connect/login?v=3&api_key=APIKEY12345"))
+        import urllib.parse
+        state = urllib.parse.unquote(urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["redirect_params"][0]).split("=")[1]
+        s1, h1, _ = self.get("/broker/callback?status=success&request_token=REQTOKEN1234&state=wrong")
+        self.assertEqual(s1, 302)
+        self.assertIn("broker=error", h1["Location"])
+        self.assertFalse(any("/session/token" in u for _, u in self.calls), "a wrong state never reaches Zerodha")
+        s2, h2, _ = self.get(f"/broker/callback?status=success&request_token=REQTOKEN1234&state={state}")
+        self.assertEqual((s2, h2["Location"]), (302, "/#/settings?broker=ok"))
+        self.assertTrue(json.loads(self.get("/api/broker/status")[2])["connected"])
+
+    def test_orders_are_refused_without_the_live_flag_and_kill_switch_syncs(self):
+        code, body = self.post("/api/broker/order", {"order": {"tradingsymbol": "RELIANCE", "quantity": 1, "price": 100, "tag": "ML1"}})
+        self.assertEqual(code, 403)
+        self.assertEqual(self.post("/api/broker/kill", {"on": True, "reason": "test"})[1]["killSwitch"], True)
+        self.assertTrue(json.loads(self.get("/api/broker/status")[2])["killSwitch"])
+        self.assertEqual(self.post("/api/broker/kill", {"on": False})[1]["killSwitch"], False)

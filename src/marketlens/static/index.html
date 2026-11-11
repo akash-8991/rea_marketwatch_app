@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/tailwind.css">
   <link rel="modulepreload" href="js/lib.js">
+  <script type="module" src="js/theme.js"></script>
 </head>
 <body>
   <a class="skip" href="#app">Skip to content</a>
@@ -21,10 +22,11 @@
         <input id="q" type="search" placeholder="Search stocks" autocomplete="off" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K">
         <kbd class="kbd" aria-hidden="true">Ctrl K</kbd>
       </div>
-      <span id="status-pill" class="pill" role="status" aria-live="polite"></span>
+      <span id="status-pill" class="pill" role="status" aria-live="polite"></span><span id="clock" class="clock" aria-hidden="true"></span>
       <span id="whoami" class="whoami hide"></span><button id="logout" class="btn small hide" type="button" aria-label="Sign out"><span data-icon="log-out" data-size="16"></span><span class="lbl">Sign out</span></button>
       <button id="theme" class="icon-btn spacer" type="button" aria-label="Toggle dark mode"><span data-icon="moon"></span></button>
     </div>
+    <div id="tape" class="tape" aria-hidden="true"><div class="tape-in" id="tape-in"></div></div>
   </header>
   <div class="shell">
     <nav class="main" id="nav" aria-label="Main" data-open="false">
@@ -35,8 +37,13 @@
       <a href="#/options" data-r="options"><span data-icon="layers"></span>Option chain</a>
       <a href="#/watchlist" data-r="watchlist"><span data-icon="star"></span>Watchlist</a>
       <a href="#/paper" data-r="paper"><span data-icon="flask-conical"></span>Paper trading</a>
+      <a href="#/signals" data-r="signals"><span data-icon="zap"></span>Signals</a>
+      <a href="#/orders" data-r="orders"><span data-icon="receipt"></span>Orders &amp; risk</a>
+      <a href="#/fundamentals" data-r="fundamentals"><span data-icon="building-2"></span>Fundamentals</a>
+      <a href="#/ops" data-r="ops"><span data-icon="database"></span>Operator</a>
       <a href="#/news" data-r="news"><span data-icon="newspaper"></span>News</a>
       <a href="#/updates" data-r="updates"><span data-icon="activity"></span>Updates</a>
+      <a href="#/settings" data-r="settings"><span data-icon="settings-2"></span>Settings</a>
       <p class="nav-user" id="nav-user" hidden></p>
     </nav>
     <div class="content">
@@ -44,6 +51,7 @@
       <footer>This is an educational app. Nothing shown here is investment advice.</footer>
     </div>
   </div>
+  <div id="fkeys" class="fkeys" role="toolbar" aria-label="Function keys (Alt plus the key)"></div>
   <div id="toasts" class="toasts" role="region" aria-label="Notifications"></div>
   <script type="module" src="js/data.js"></script>
 </body>

@@ -37,6 +37,14 @@ grid minimums use `min(100%, …)`; charts size to the window height; dialogs an
 It reports sideways page growth, elements poking out of the window, wrapping controls, clipped text, overlapping top-bar items and small tap targets.
 Last run at 280, 320, 390, 667×375, 768, 1024 and 1920 px: no findings (the only reports left are headlines that wrap onto several lines, which is intended).
 
+## Terminal theme and chrome
+The default theme is **Terminal**: black panels, amber labels and headings, monospace figures, dense tables with zebra rows, square corners, white-on-black data with green and red for direction (every colour pair is checked for WCAG AA contrast in `tests/test_design.py`). **Dark** and **Light** remain; the top-bar button cycles the three and Settings has a selector (the preference moved everyone to Terminal once, after that the choice is theirs).
+Chrome: an IST clock, a scrolling **ticker tape** of the indices and the most traded stocks (painted by the live feed, pauses on hover), and a **function-key bar** along the bottom (Alt + 1 to 9, 0, - and = open Home, Markets, Charts, Screener, Options, Watchlist, Paper, Signals, Orders, Fundamentals, Operator, Settings; F-keys themselves are left to the browser). The search box is a **command line**: besides symbols and company names it understands mnemonics: `INFY GP` (graph) chart, `INFY DES` or `EQ` stock page, `INFY FA` analysis, `INFY N` news, `INFY OPT`, `INFY SIG` signals, and one-word commands `TOP`, `MKT`, `SCRN`, `WATCH`, `PAPER`, `SIG`, `ORD`, `OPS`, `FUND`, `SET`, `NEWS`. On phones the tape and menu stay, the clock and function-key bar are hidden.
+
+## Signals, Orders & risk, Operator, Fundamentals, Settings
+See [DESK.md](DESK.md) for what each does and how it maps to the requirements, and [BROKER.md](BROKER.md) for the Zerodha connection.
+* **Fundamentals** screens (`fund-screens.js`): dividend income, steady dividend payers, yield above sector, near the 52-week low while paying, leaders near the high, beaten down but steady, and a composite scorecard (value 30, income 25, momentum 25, liquidity 20; missing components are skipped, not guessed), plus sector P/E, P/B and yield against the Nifty 50.
+
 ## Live refresh (every 100 ms)
 While the market trades, every screen repaints within 100 ms of new data: the index tiles, the sector heat map and every stock price and change that is on screen (rows scrolled far out of view are
 left out). One small request (`/api/live`) carries all of it; requests never overlap, the page pauses while its tab is hidden, backs off when the server struggles, and slows to every
@@ -103,7 +111,7 @@ Four tabs, in the same underlined style as the Screener and the stock page.
   history with CSV download (spreadsheet formulas neutralised); reset with confirmation.
 * **Trade**: order ticket with a live price card, quantity shortcuts (10, 25, 50 percent, max), an itemised cost, and reasons when an order cannot be placed. The fill price
   is fetched at the moment you press the button. Orders are blocked when there is no current price. Rules: whole shares, long only (no short selling), no borrowing, a 0.10% fee per trade.
-* **Stock strategies**: 37 strategies, in nine groups, run over a stock's real daily history. Choose a strategy, a stock, a period, costs and the strategy's own settings. Output:
+* **Stock strategies**: 65 strategies, in twelve groups, run over a stock's real daily history. Choose a strategy, a stock, a period, costs and the strategy's own settings. Output:
   final value against buy and hold, worst fall, closed trades and win rate, time invested, costs, an account-value curve for both, every trade, today's position with one-click
   paper trades, and a table of every strategy on the same data. Each has a plain-language page: the idea, when it buys and sells, when it works, when it struggles, what to learn.
   A signal is read at one close and acts at the next; the strategies use closing prices only (highs and lows are not in the saved history), so oscillators use the closing range.
@@ -115,14 +123,18 @@ Strategy pages (the description, the legs and the comparison tables) use a small
 | Group | Strategies |
 |---|---|
 | Benchmark | Buy and hold |
-| Trend following | Moving-average crossover, exponential-average crossover, triple moving-average alignment, golden / death cross (50 and 200 day), price above its average, MACD signal crossover, MACD above zero, linear-regression trend, TRIX |
-| Momentum | Momentum (look-back), RSI above 50, RSI momentum band, stochastic oscillator, CCI, time-series momentum (skipping recent days), near the 52-week high |
-| Mean reversion | RSI reversion, RSI(2) pullback in an uptrend, Bollinger reversion, Z-score, buy a dip below the average, consecutive down days |
-| Breakout and volatility | Donchian channel breakout, Turtle breakout (55 / 20), Bollinger breakout, volatility squeeze breakout |
-| Risk rules | Buy and hold with a trailing stop, trend entry with stop-loss and profit target |
-| Investing | Monthly SIP (equal instalments, rupee-cost averaging) |
-| Calendar | Turn of the month, Halloween (November to April) |
-| Long and short | Moving-average crossover, MACD crossover, momentum, channel breakout, Bollinger reversion and RSI reversion, each also selling short |
+| Trend following (15) | Moving-average crossover, EMA crossover, triple moving-average alignment, golden / death cross, price above its average, MACD signal crossover, MACD above zero, linear-regression trend, TRIX, **Supertrend, ADX and directional movement, Parabolic SAR, Ichimoku cloud, Aroon, Heikin-Ashi trend** |
+| Momentum (9) | Momentum, RSI above 50, RSI momentum band, stochastic, CCI, time-series momentum, near the 52-week high, **Williams %R, Elder ray** |
+| Mean reversion (8) | RSI reversion, RSI(2) pullback, Bollinger reversion, Z-score, dip below the average, consecutive down days, **Keltner channel reversion, gap-down rebound** |
+| Pullback (1) | **Fibonacci pullback in an uptrend** |
+| Breakout and volatility (11) | Donchian, Turtle 55/20, Bollinger breakout, volatility squeeze, **Keltner breakout, TTM squeeze, gap-up continuation, inside-bar breakout, NR7 breakout, pivot-point breakout, consolidation range breakout** |
+| Volume (4) | **Money Flow Index, Chaikin money flow, on-balance volume trend, high-volume breakout** |
+| Candlestick patterns (4) | **Bullish reversals (hammer, engulfing, morning star, piercing line, three white soldiers, harami), engulfing long and short, morning and evening stars, hammer and shooting star** |
+| Risk rules (3) | Trailing stop, stop-loss with profit target, **Chandelier exit** |
+| Investing, Calendar | Monthly SIP; turn of the month; Halloween |
+| Long and short (6) | Moving-average crossover, MACD, momentum, channel breakout, Bollinger reversion, RSI reversion, each also selling short |
+
+The bold ones need highs, lows, opens or volume: the lab now passes the full daily candle (open, high, low, close, volume) to every strategy; a history without opens, highs and lows falls back to flat candles (close only). Fundamental strategies cannot be backtested honestly (NSE publishes no point-in-time financials), so they are screens on the Fundamentals page instead.
 
 Short strategies sell borrowed shares and buy them back (a short can lose without limit). The paper *account* still cannot short; shorting is simulated only inside the strategy lab.
 Every setting is clamped to a safe range, so a typo cannot crash or distort a run.
@@ -156,6 +168,6 @@ history are a way to understand the rule, not a forecast, and only 2.8 years of 
 The account is stored in this browser or app only (per signed-in user) under `ml.paper`; clearing the app's storage removes it.
 
 ## Files
-`ui.js` components and toasts · `palette.js` command palette · `dashboard.js` watchlist · `chart.js` price chart · `paper-view.js` paper-trading page · `options-view.js` option strategies tab · `listings.js` New on NSE card · `chart-view.js` chart analysis page · `ta.js` technical analysis maths · `live.js` the one-second feed · `options-lab.js` option maths and catalogue paper trading page ·
+`ui.js` components and toasts · `palette.js` command palette · `dashboard.js` watchlist · `chart.js` price chart · `paper-view.js` paper-trading page · `options-view.js` option strategies tab · `desk-core.js` desk rules · `desk.js` desk runtime · `signals-view.js` `orders-view.js` `ops-view.js` `fundamentals-view.js` `settings-view.js` desk pages · `theme.js` themes · `listings.js` New on NSE card · `chart-view.js` chart analysis page · `ta.js` technical analysis maths · `live.js` the one-second feed · `options-lab.js` option maths and catalogue paper trading page ·
 `paper.js` account rules · `strategies.js`, `indicators.js` simulator · `pure.js` testable logic (sorting, filtering, windowing, decimation, highlighting) ·
 `lib.js` helpers and API client (timeouts, retries with backoff and jitter, cancellation) · `icons.js` generated icons.

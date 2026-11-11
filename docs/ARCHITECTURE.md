@@ -96,13 +96,15 @@ flowchart LR
     A[index.html + style.css + tailwind.css] --> B[data.js] --> C[app.js, lib.js, ui.js, icons.js]
   end
   subgraph Lazy["loaded on first use"]
-    P[palette.js] ; D[dashboard.js] ; H[chart.js] ; Pp[paper-view.js] --> S[strategies.js, indicators.js, paper.js] ; Pp -. "Option strategies tab" .-> Ov[options-view.js] --> Ol[options-lab.js] ; Cv[chart-view.js] --> Ta[ta.js, indicators.js] ; Cv -. "intraday" .-> Yh["/api/candles (yahoo.py)"] ; Lv[live.js: 1 s feed] ; Sc[screener.js]
+    P[palette.js] ; D[dashboard.js] ; H[chart.js] ; Dk[desk.js] --> Dc[desk-core.js] ; Sg[signals-view.js] --> Dk ; Od[orders-view.js] --> Dk ; Op[ops-view.js] --> Dk ; St[settings-view.js] --> Dk ; Fv[fundamentals-view.js] --> Fs[fund-screens.js] ; Pp[paper-view.js] --> S[strategies.js, indicators.js, paper.js] ; Pp -. "Option strategies tab" .-> Ov[options-view.js] --> Ol[options-lab.js] ; Cv[chart-view.js] --> Ta[ta.js, indicators.js] ; Cv -. "intraday" .-> Yh["/api/candles (yahoo.py)"] ; Lv[live.js: 1 s feed] ; Sc[screener.js]
   end
   C -. "Ctrl K" .-> P
   C -. "#/watchlist" .-> D
   C -. "#/quote" .-> H
   C -. "#/paper" .-> Pp
   C -. "#/chart" .-> Cv
+  C -. "#/signals #/orders #/ops #/settings" .-> Dk
+  C -. "#/fundamentals" .-> Fv
   C -. "after sign-in, every 100 ms" .-> Lv
   C --> API["/api/*"]
 ```

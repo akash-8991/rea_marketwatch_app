@@ -1,5 +1,6 @@
 /* MarketLens app (ES module): hash-routed single page. Data: NSE via the local server. See data.js, lib.js, screener.js. */
 import { buttonClass, statusBadge, alert, toast, ago } from './ui.js';
+import { THEMES, applyTheme, currentTheme } from './theme.js';
 import { startVitals, hydrateIcons, autoScrollTables, tint, sgn, compact, $, $$, esc, money, signed, cls, arrow, chgPct, pos52, idxChange, fmtDate, symLink, secTag, store, api, conn, onConn, badge, toneKind, sparkline, skeleton, emptyState, errorState, safeUrl, icon } from './lib.js';
 
 const D = window.MLData;
@@ -454,6 +455,19 @@ startVitals();
         .catch((e) => { $('#chart-host').innerHTML = errorState('Could not load chart analysis', e.message, 'chart-retry'); $('#chart-retry')?.addEventListener('click', route); });
     },
   });
+  /* desk pages (Signals, Orders & risk, Fundamentals, Operator, Settings): each is a lazy module mounted into its own host */
+  const deskView = (id, file, title, hash) => (parts) => ({
+    html: `<div id="${id}-host"><p class="muted pad">Loading ${title}…</p></div>`,
+    after() {
+      import(`./${file}`).then((m) => { if (location.hash.startsWith(hash)) { const un = m.mount($(`#${id}-host`), { D, stocks, bySym, sym: parts[0] ? decodeURIComponent(parts[0]) : '' }); const prev = unmountScreener; unmountScreener = () => { un && un(); prev && prev(); }; } })
+        .catch((e) => { $(`#${id}-host`).innerHTML = errorState(`Could not load ${title}`, e.message, `${id}-retry`); $(`#${id}-retry`)?.addEventListener('click', route); });
+    },
+  });
+  views.signals = deskView('signals', 'signals-view.js', 'signals', '#/signals');
+  views.orders = deskView('orders', 'orders-view.js', 'orders and risk', '#/orders');
+  views.fundamentals = deskView('fundamentals', 'fundamentals-view.js', 'fundamentals', '#/fundamentals');
+  views.ops = deskView('ops', 'ops-view.js', 'the operator page', '#/ops');
+  views.settings = deskView('settings', 'settings-view.js', 'settings', '#/settings');
   views.paper = () => ({
     html: `<h1>Paper trading</h1>${skeleton(5)}`,
     after() {
@@ -501,23 +515,37 @@ startVitals();
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
       if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') || (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey)) { e.preventDefault(); openPalette(); }
     });
-    const paintTheme = () => { const dark = document.documentElement.dataset.theme === 'dark'; $('#theme').innerHTML = icon(dark ? 'sun' : 'moon', 18); $('#theme').setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode'); };
-    $('#theme').addEventListener('click', () => {
-      const dark = document.documentElement.dataset.theme !== 'dark';
-      document.documentElement.dataset.theme = dark ? 'dark' : 'light'; store.set('ml.theme', dark ? 'dark' : 'light'); paintTheme();
-    });
+    const names = { terminal: 'Terminal', dark: 'Dark', light: 'Light' };
+    const nextTheme = () => THEMES[(THEMES.findIndex((t) => t[0] === currentTheme()) + 1) % THEMES.length][0];
+    const paintTheme = () => { const t = currentTheme(), n = nextTheme(); $('#theme').innerHTML = icon(t === 'light' ? 'sun' : 'moon', 18); $('#theme').setAttribute('aria-label', `Theme: ${names[t]}. Switch to ${names[n]}`); $('#theme').title = `Theme: ${names[t]} (click for ${names[n]})`; };
+    $('#theme').addEventListener('click', () => { applyTheme(nextTheme()); });
+    document.addEventListener('themechange', paintTheme);
     paintTheme();
+  }
+  /* Terminal chrome: IST clock, scrolling ticker tape of indices and the most traded stocks (painted by paintLive like everything else), and the function-key bar (Alt + key). */
+  const FKEYS = [['1', 'HOME', '#/', 'home'], ['2', 'MKTS', '#/markets', 'markets'], ['3', 'CHART', '#/chart', 'chart'], ['4', 'SCRN', '#/screener', 'screener'], ['5', 'OPTN', '#/options', 'options'], ['6', 'WATCH', '#/watchlist', 'watchlist'],
+    ['7', 'PAPER', '#/paper', 'paper'], ['8', 'SIGNAL', '#/signals', 'signals'], ['9', 'ORDERS', '#/orders', 'orders'], ['0', 'FUND', '#/fundamentals', 'fundamentals'], ['-', 'OPS', '#/ops', 'ops'], ['=', 'SET', '#/settings', 'settings']];
+  function wireTerminal() {
+    const clock = $('#clock'), tick = () => { if (clock) clock.textContent = `${new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(11, 19)} IST`; };
+    tick(); setInterval(tick, 1000);
+    const top = [...stocks].sort((a, b) => (b.valueCr || 0) - (a.valueCr || 0)).slice(0, 8);
+    const item = (html) => `<span class="tape-i">${html}</span>`, once = D.indices.map((ix) => item(`<b>${esc(ix.name)}</b><span data-idx="${ix.id}"></span><span data-idxchg="${ix.id}"></span>`)).join('')
+      + top.map((s) => item(`<b>${esc(s.sym)}</b><span data-px="${esc(s.sym)}"></span><span data-chg="${esc(s.sym)}"></span>`)).join('');
+    const tape = $('#tape-in'); if (tape) tape.innerHTML = once + once;   // twice, so the loop is seamless
+    const bar = $('#fkeys'); if (bar) bar.innerHTML = FKEYS.map(([k, l, h, r]) => `<a href="${h}" data-r="${r}" title="Alt+${k}"><kbd>${k}</kbd>${l}</a>`).join('');
+    document.addEventListener('keydown', (e) => { if (!e.altKey || e.ctrlKey || e.metaKey) return; const f = FKEYS.find(([k]) => k === e.key || e.code === `Digit${k}`); if (f) { e.preventDefault(); location.hash = f[2]; } });
   }
   function closeMenu() { const n = $('#nav'); if (n) { n.dataset.open = 'false'; $('#menu')?.setAttribute('aria-expanded', 'false'); } document.querySelector('.scrim')?.remove(); }
   function route() {
     if (unmountScreener) { unmountScreener(); unmountScreener = null; }
     closeMenu();
-    const parts = (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean);
+    const parts = (location.hash.replace(/^#\/?/, '').split('?')[0] || '').split('/').filter(Boolean);   // a query (#/settings?broker=ok) is read by the page itself
     const name = parts[0] || 'home';
     const v = (views[name] || views.notfound)(parts.slice(1));
-    $('#app').classList.toggle('container--wide', ['screener', 'options', 'markets', 'chart'].includes(name));   // data-heavy pages use more of a wide screen
+    $('#app').classList.toggle('container--wide', ['screener', 'options', 'markets', 'chart', 'signals', 'orders', 'ops', 'fundamentals'].includes(name));   // data-heavy pages use more of a wide screen
     $('#app').innerHTML = v.html;
     $$('nav.main a').forEach((a) => a.classList.toggle('on', a.dataset.r === name || (name === 'quote' && a.dataset.r === 'markets')));
+    $$('#fkeys a').forEach((a) => a.classList.toggle('on', a.dataset.r === name));
     if (v.after) v.after();
     paintLive();
     window.scrollTo(0, 0);
@@ -530,9 +558,9 @@ startVitals();
     ['ml.watchlist', 'ml.holdings', 'ml.screen', 'ml.mktsort', 'ml.pfgroup', 'ml.newscat'].forEach((k) => { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } });
     store.set('ml.dataVersion', 'nse2');
   }
-  document.documentElement.dataset.theme = store.get('ml.theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   hydrateIcons();
   wireChrome();
+  wireTerminal();
   $('#menu').addEventListener('click', () => {
     const open = $('#nav').dataset.open !== 'true'; $('#nav').dataset.open = open; $('#menu').setAttribute('aria-expanded', open);
     document.querySelector('.scrim')?.remove();

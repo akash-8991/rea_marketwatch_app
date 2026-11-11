@@ -48,6 +48,10 @@ class ContrastTests(unittest.TestCase):
         dark = {**light, **tokens('[data-theme="dark"]')}
         self.check("dark", dark)
 
+    def test_terminal_theme_meets_wcag_aa(self):
+        light = tokens(":root")
+        self.check("terminal", {**light, **tokens('[data-theme="terminal"]')})
+
     def test_both_themes_define_the_same_semantic_tokens(self):
         light, dark = tokens(":root"), tokens('[data-theme="dark"]')
         self.assertFalse({"bg", "surface", "text", "brand", "up", "down"} - set(dark))
@@ -56,7 +60,7 @@ class ContrastTests(unittest.TestCase):
 
 class StylesheetRules(unittest.TestCase):
     def test_no_hard_coded_colours_outside_the_token_blocks(self):
-        body = re.sub(r"(:root|\[data-theme=\"dark\"\])\s*\{.*?\n\}", "", CSS, flags=re.S)
+        body = re.sub(r"(:root|\[data-theme=\"dark\"\]|\[data-theme=\"terminal\"\])\s*\{.*?\n\}", "", CSS, flags=re.S)
         self.assertEqual(re.findall(r"#[0-9a-fA-F]{3,8}\b", body), [], "use var(--token) instead")
         self.assertEqual(re.findall(r"rgb\(", re.sub(r"--shadow[^;]*;", "", body)), [])
 
@@ -174,6 +178,23 @@ class StylesheetRules(unittest.TestCase):
         self.assertIn('id="new-listings"', app)
         self.assertIn("import('./listings.js')", app)
         self.assertIn("/api/listings", (STATIC / "js" / "listings.js").read_text())
+
+    def test_terminal_is_the_default_theme_with_chrome_and_desk_pages(self):
+        theme = (STATIC / "js" / "theme.js").read_text()
+        self.assertIn("'terminal'", theme)
+        self.assertRegex(theme, r"THEMES = \[\['terminal'")
+        for marker in ('id="tape"', 'id="fkeys"', 'id="clock"', 'data-r="signals"', 'data-r="orders"', 'data-r="ops"', 'data-r="fundamentals"', 'data-r="settings"'):
+            self.assertIn(marker, HTML, marker)
+        app = (STATIC / "js" / "app.js").read_text()
+        for v in ("views.signals", "views.orders", "views.ops", "views.fundamentals", "views.settings"):
+            self.assertIn(v, app)
+        for f in ("signals-view.js", "orders-view.js", "ops-view.js", "fundamentals-view.js", "settings-view.js", "desk-core.js", "desk.js", "fund-screens.js", "strategies-ohlc.js"):
+            self.assertTrue((STATIC / "js" / f).exists(), f)
+
+    def test_the_settings_page_never_receives_broker_secrets(self):
+        view = (STATIC / "js" / "settings-view.js").read_text()
+        self.assertIn('type="password"', view)
+        self.assertNotRegex(view, r"localStorage|store\.set\([^)]*(secret|token)", "secrets are posted to the server, never stored in the page")
 
 
 if __name__ == "__main__":

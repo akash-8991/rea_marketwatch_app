@@ -27,7 +27,7 @@ export const tint = (text) => esc(text)
 export const safeUrl = (u) => (/^https?:\/\//i.test(u) ? u : '#');
 
 /* ---------- storage (every access guarded: it can be blocked or full) ---------- */
-const GLOBAL_KEYS = new Set(['ml.theme', 'ml.dataVersion']);   // everything else belongs to the signed-in user
+const GLOBAL_KEYS = new Set(['ml.theme', 'ml.themeV', 'ml.dataVersion']);   // everything else belongs to the signed-in user
 const scoped = (k) => (store.user && k.startsWith('ml.') && !GLOBAL_KEYS.has(k) ? `${k}@${store.user}` : k);
 export const store = {
   user: null,   // set once after sign-in so each account keeps its own watchlist, saved screens and filters in this browser

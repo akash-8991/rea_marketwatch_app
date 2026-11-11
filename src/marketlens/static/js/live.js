@@ -34,7 +34,9 @@ export function start({ D, bySym, repaint }) {
     try {
       const syms = visibleSymbols();
       const r = await api(`/api/live?symbols=${encodeURIComponent(syms.join(','))}`, { quiet: true, retries: 0, timeoutMs: 8000 });
-      st.fails = 0; st.last = Date.now(); st.ok++;
+      if (st.fails > 0) st.reconnects = (st.reconnects || 0) + 1;
+      if (st.last && t0 - st.last > 2500 && r.market && r.market.live) st.gaps = (st.gaps || 0) + 1;   // answers further apart than the feed should allow
+      st.fails = 0; st.last = Date.now(); st.ok++; st.latency = Date.now() - t0; st.skew = typeof r.t === 'number' ? r.t - Date.now() : null;
       D.liveAt = st.last; const changed = applyFeed(D, bySym, r); if (changed || !st.painted) { repaint(r); st.painted = true; } listeners.forEach((fn) => { try { fn(r); } catch (e) { /* a view's listener must not stop the feed */ } });
       wait = (r.intervalMs || FAST_MS) - (Date.now() - t0);
     } catch (e) { st.fails++; wait = Math.min(15000, 500 * 2 ** Math.min(st.fails, 5)); }

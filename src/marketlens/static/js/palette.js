@@ -2,19 +2,21 @@
  * Search is debounced, obsolete requests are aborted, results are cached for ten minutes, recent searches are remembered per user, matches are highlighted,
  * and everything works from the keyboard (↑ ↓ Home End Enter Esc). Ctrl/Cmd+K or "/" opens it from anywhere. */
 import { esc, store, api, money, signed, cls, icon } from './lib.js';
-import { highlight } from './pure.js';
+import { highlight, mnemonic } from './pure.js';
 
 const CACHE_MS = 10 * 60 * 1000, DEBOUNCE_MS = 150, MAX_RECENT = 8;
 const cache = new Map();                                   // normalised query -> {at, data}
 let dlg = null, input = null, list = null, state = { items: [], active: -1, seq: 0, ctl: null, timer: 0 };
 
 const norm = (q) => q.trim().toLowerCase();
+
 const recents = () => store.get('ml.recent', []);
 const remember = (sym) => store.set('ml.recent', [sym, ...recents().filter((x) => x !== sym)].slice(0, MAX_RECENT));
 
 const ACTIONS = [
   ['go:#/', 'Home', 'layout-dashboard'], ['go:#/markets', 'Markets', 'chart-line'], ['go:#/screener', 'Screener', 'list-filter'], ['go:#/options', 'Option chain', 'layers'],
-  ['go:#/watchlist', 'Watchlist', 'star'], ['go:#/chart', 'Chart analysis', 'chart-candlestick'], ['go:#/paper', 'Paper trading', 'flask-conical'], ['act:theme', 'Toggle light / dark', 'moon'],
+  ['go:#/watchlist', 'Watchlist', 'star'], ['go:#/chart', 'Chart analysis', 'chart-candlestick'], ['go:#/paper', 'Paper trading', 'flask-conical'], ['go:#/signals', 'Signals (agents and fusion)', 'zap'], ['go:#/orders', 'Orders and risk', 'receipt'],
+  ['go:#/fundamentals', 'Fundamentals', 'building-2'], ['go:#/ops', 'Operator (health, kill switch, audit)', 'database'], ['go:#/settings', 'Settings (theme, Zerodha)', 'settings-2'], ['act:theme', 'Cycle theme (Terminal, Dark, Light)', 'moon'],
 ];
 
 function render(q) {
@@ -27,14 +29,15 @@ function render(q) {
     html = group('Recent searches', rec) + group('Go to', ACTIONS.map(([id, label, ic]) => row(id, ic, esc(label), '', '', 'act')));
     if (!rec.length) html = `<li role="presentation" class="px-3 py-2 text-sm text-muted-foreground">Type a symbol (INFY) or a company name (Infosys).</li>` + html;
   } else {
+    const mn = mnemonic(q); if (mn) html += group('Command', [row('go:' + mn.hash, 'command', esc(mn.label), 'Enter to run', '', 'act')]);
     const data = (cache.get(norm(q)) || {}).data;
-    if (!data) html = `<li role="presentation" class="px-3 py-6 text-center text-sm text-muted-foreground">Searching…</li>`;
-    else if (data.error) html = `<li role="presentation" class="px-3 py-6 text-center text-sm text-down">Search is unavailable right now (${esc(data.error)}). You can still open a symbol directly: press Enter.</li>` + (/^[A-Za-z0-9&_-]{1,24}$/.test(q.trim()) ? row('sym:' + q.trim().toUpperCase(), 'arrow-up', `Open ${esc(q.trim().toUpperCase())}`, '', '', 'sym') : '');
+    if (!data) html += `<li role="presentation" class="px-3 py-6 text-center text-sm text-muted-foreground">Searching…</li>`;
+    else if (data.error) html += `<li role="presentation" class="px-3 py-6 text-center text-sm text-down">Search is unavailable right now (${esc(data.error)}). You can still open a symbol directly: press Enter.</li>` + (/^[A-Za-z0-9&_-]{1,24}$/.test(q.trim()) ? row('sym:' + q.trim().toUpperCase(), 'arrow-up', `Open ${esc(q.trim().toUpperCase())}`, '', '', 'sym') : '');
     else {
       const rows = data.results.map((r) => row('sym:' + r.symbol, 'building-2', highlight(r.symbol, q), r.name ? highlight(r.name, q) : '',
         r.last_close != null ? `<span class="text-right text-xs tabular-nums">${money(r.last_close)}${r.pct_change != null ? ` <span class="${cls(r.pct_change)}">${signed(r.pct_change)}%</span>` : ''}</span>` : '', 'sym'));
-      html = group('Stocks', rows);
-      if (!rows.length) html = `<li role="presentation" class="px-3 py-8 text-center text-sm text-muted-foreground">No stocks match “${esc(q.trim())}”.${/^[A-Za-z0-9&_-]{1,24}$/.test(q.trim()) ? ' Press Enter to try the symbol anyway.' : ''}</li>`
+      html += group('Stocks', rows);
+      if (!rows.length) html += `<li role="presentation" class="px-3 py-8 text-center text-sm text-muted-foreground">No stocks match “${esc(q.trim())}”.${/^[A-Za-z0-9&_-]{1,24}$/.test(q.trim()) ? ' Press Enter to try the symbol anyway.' : ''}</li>`
         + (/^[A-Za-z0-9&_-]{1,24}$/.test(q.trim()) ? row('sym:' + q.trim().toUpperCase(), 'arrow-up', `Open ${esc(q.trim().toUpperCase())}`, 'Try this exact symbol', '', 'sym') : '');
       if (data.note) html += `<li role="presentation" class="px-3 py-2 text-xs text-muted-foreground">${esc(data.note)}</li>`;
     }

@@ -6,6 +6,7 @@
  *   - Results are compared with simply buying on the first day and holding.
  * Pure functions, no DOM, no network: the view feeds them closes from /api/history and renders what they return. */
 import { sma, ema, rsi, macd, bollinger, channel, roc, stdev, zscore, stochK, cci, slope, trix } from './indicators.js';
+import { buildOhlc } from './strategies-ohlc.js';
 
 /** Each strategy turns closes into a desired position per day (1 = hold shares, 0 = stay in cash), using only data up to that day. */
 export const STRATEGIES = {
@@ -171,8 +172,9 @@ Object.assign(STRATEGIES, {
     ['Buy oversold, short overbought, and close either side when RSI returns to 50.', 'RSI below the low level.', 'RSI above the high level: sell short. Both close at RSI 50.', 'In range-bound markets.', 'In trends, where RSI stays extreme.', 'Overbought can stay overbought; shorting it can hurt for a long time.'],
     (c, p) => { const r = rsi(c, p.period); let pos = 0; return c.map((_, i) => { if (!ok(r[i])) return 0; if (pos === 0) { if (r[i] < p.low) pos = 1; else if (r[i] > p.high) pos = -1; } else if ((pos === 1 && r[i] >= 50) || (pos === -1 && r[i] <= 50)) pos = 0; return pos; }); }, { shorts: true }),
 });
+Object.assign(STRATEGIES, buildOhlc(def, hold, flip));   // strategies that need highs, lows, opens and volume
 for (const [k, g] of Object.entries({ buyhold: 'Benchmark', sma_cross: 'Trend following', macd_cross: 'Trend following', momentum: 'Momentum', rsi_reversion: 'Mean reversion', bollinger: 'Mean reversion', donchian: 'Breakout and volatility' })) STRATEGIES[k].group = g;
-export const GROUP_ORDER = ['Benchmark', 'Trend following', 'Momentum', 'Mean reversion', 'Breakout and volatility', 'Risk rules', 'Investing', 'Calendar', 'Long and short'];
+export const GROUP_ORDER = ['Benchmark', 'Trend following', 'Momentum', 'Mean reversion', 'Pullback', 'Breakout and volatility', 'Volume', 'Candlestick patterns', 'Risk rules', 'Investing', 'Calendar', 'Long and short'];
 export const strategyGroups = () => GROUP_ORDER.map((g) => [g, Object.entries(STRATEGIES).filter(([, s]) => s.group === g).map(([k, s]) => [k, s.name])]).filter(([, l]) => l.length);
 
 export const defaultParams = (key) => Object.fromEntries(STRATEGIES[key].params.map(([k, , d]) => [k, d]));
@@ -192,7 +194,8 @@ export function backtest(points, key, rawParams = {}, { capital = 1_000_000, fee
   if (!STRATEGIES[key]) throw new Error(`unknown strategy ${key}`);
   if (!points || points.length < 3) throw new Error('not enough price history to run a strategy');
   const S = STRATEGIES[key], params = cleanParams(key, rawParams), closes = points.map((p) => p[1]), dates = points.map((p) => p[0]);
-  const want = S.signal(closes, params, dates), fee = feePct / 100, slip = slipPct / 100;
+  const candles = points.map((p) => ({ t: p[0], c: p[1], v: p[2] || 0, o: p[3] ?? p[1], h: p[4] ?? p[1], l: p[5] ?? p[1] }));   // opens, highs and lows when the history has them, else flat candles
+  const want = S.signal(closes, params, dates, candles), fee = feePct / 100, slip = slipPct / 100;
   let cash = capital, qty = 0, entry = null, feesPaid = 0, held = 0, spent = 0;
   const equity = [], trades = [], rounds = [];
   const instalments = S.kind === 'sip' ? (() => { const out = new Set(); let last = null, n = 0; dates.forEach((d, i) => { const m = d.slice(0, 7); if (m !== last) { if (n % params.every === 0) out.add(i); n++; last = m; } }); return out; })() : null;

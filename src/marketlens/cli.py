@@ -22,6 +22,7 @@ def build_parser():
     p.add_argument("--no-login", action="store_true", help="turn accounts off: no sign-in screen (for a single user on a trusted machine)")
     p.add_argument("--list-users", action="store_true", help="print the registered user IDs and exit")
     p.add_argument("--reset-password", metavar="USERID", default=None, help="set a new password for USERID (asks for it; machine owner only) and exit")
+    p.add_argument("--enable-live-orders", action="store_true", help="allow real orders to be sent to Zerodha through the Settings > Broker connection (off by default; see docs/BROKER.md before using it)")
     p.add_argument("--no-open", action="store_true", help="do not open a browser window")
     p.add_argument("--version", action="version", version=f"marketlens {__version__}")
     return p
@@ -32,7 +33,8 @@ def main(argv=None):
     config.configure(host=args.host, port=args.port, data_dir=args.data_dir, offline=True if args.offline else None,
                      news=False if args.no_news else None, fo_url=args.fo_mcp_url,
                      option_inbox=args.option_inbox, option_interval=args.option_interval,
-                     rate_limit=False if args.no_rate_limit else None, require_login=False if args.no_login else None)
+                     rate_limit=False if args.no_rate_limit else None, require_login=False if args.no_login else None,
+                     live_orders=True if args.enable_live_orders else None)
     if args.list_users or args.reset_password:
         from . import accounts
         if args.list_users:
@@ -66,6 +68,7 @@ def main(argv=None):
     print(f"  accounts    : {'sign-in required (--no-login to turn off)' if config.settings.require_login else 'off (--no-login): anyone who can open the page can use it'}")
     print(f"  option chain: inbox {config.inbox_dir()} scanned every {config.settings.option_interval}s; "
           f"{'endpoint configured' if config.settings.fo_url else 'no MCP endpoint (see --fo-mcp-url)'}")
+    print(f"  live orders : {'ENABLED (--enable-live-orders): orders can be sent to Zerodha' if config.settings.live_orders else 'off (reading and paper trading only)'}")
     print("  Press Ctrl+C to stop.")
     if not args.no_open:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()

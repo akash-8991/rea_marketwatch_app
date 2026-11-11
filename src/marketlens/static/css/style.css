@@ -34,6 +34,21 @@
   --up: #3ed39c; --up-bg: #12372b; --down: #ff8a80; --down-bg: #42201d; --warn-bg: #3a2e0e; --warn-text: #ffd479; --info: #8aa8ff;
   --series-1: #8aa8ff; --series-2: #3ed39c; --series-3: #f0b45a; --series-4: #ff8a80; --series-5: #c4a3ff; --series-6: #5fd3e8;
 }
+[data-theme="terminal"] {
+  --font-sans: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --fs-xs: .6875rem; --fs-sm: .75rem; --fs-base: .8125rem; --fs-md: .875rem; --fs-lg: .9375rem; --fs-news: .78125rem;
+  --fs-xl: 1.125rem; --fs-2xl: 1.375rem;
+  --space-1: .1875rem; --space-2: .375rem; --space-3: .5rem; --space-4: .75rem; --space-5: 1rem; --space-6: 1.5rem;
+  --radius-sm: 1px; --radius-md: 2px; --radius-lg: 2px; --radius: 2px; --ctl-h: 1.75rem; --ctl-h-sm: 1.5rem; --gutter: clamp(8px, 1.6vw, 20px);
+  --content-max: 1500px; --content-wide: 2200px;
+  --shadow-1: none; --shadow-pop: 0 0 0 1px rgb(255 160 40 / .5), 0 8px 24px rgb(0 0 0 / .8);
+  --bg: #000000; --surface: #0b0b0b; --surface-2: #171717; --border: #333333; --border-strong: #8c8c8c;
+  --text: #f4f4f4; --text-2: #d2d2d2; --text-muted: #a8a8a8;
+  --brand: #ffa028; --brand-ink: #000000; --focus: #ffa028; --selection: #3a2a08;
+  --flat: #c8c8c8; --flat-bg: #1b1b1b;
+  --up: #19e08a; --up-bg: #07301f; --down: #ff5d52; --down-bg: #3a0f0c; --warn-bg: #3a2a08; --warn-text: #ffc35c; --info: #4db3ff;
+  --series-1: #ffa028; --series-2: #19e08a; --series-3: #4db3ff; --series-4: #ff5d52; --series-5: #c792ff; --series-6: #2de2e6;
+}
 :root { /* legacy names used by view templates, mapped onto the semantic tokens */
   --card: var(--surface); --ink: var(--text); --muted: var(--text-muted); --line: var(--border); --brand-hover: var(--brand);
 }
@@ -406,3 +421,73 @@ dialog { max-width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); overflo
 .ta-chip.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; }
 @media (pointer: coarse) { .ta-chip { height: 2.25rem; padding: 0 .8rem; } .ta-btn { min-width: 2.75rem; height: 2.75rem; } .ta-opt { min-height: 2.75rem; } .ta-pick-btn { height: 2.75rem; } }
 @media (max-width: 380px) { .ta-opts { grid-template-columns: 1fr; } .ta-lbl { padding-top: 0; } }
+
+/* ---------- 9. Terminal chrome: ticker tape, clock, function-key bar (all themes) ---------- */
+.clock { font: 600 var(--fs-sm)/1 var(--font-mono); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tape { overflow: hidden; border-top: 1px solid var(--border); background: var(--bg); white-space: nowrap; height: 1.5rem; }
+.tape-in { display: inline-flex; gap: 2rem; padding-block: .2rem; animation: tape 80s linear infinite; will-change: transform; }
+.tape:hover .tape-in { animation-play-state: paused; }
+@keyframes tape { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.tape-i { display: inline-flex; gap: .45rem; font: 600 var(--fs-xs)/1.1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.tape-i b { color: var(--brand); font-weight: 700; } .tape-i .up { color: var(--up); } .tape-i .down { color: var(--down); }
+.fkeys { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; display: flex; gap: 1px; background: var(--border); border-top: 1px solid var(--brand); overflow-x: auto; }
+.fkeys a { flex: 1 0 auto; display: inline-flex; gap: .4rem; align-items: center; justify-content: center; padding: .28rem .7rem; background: var(--surface); color: var(--text-2); font: 700 var(--fs-xs)/1 var(--font-mono); letter-spacing: .04em; white-space: nowrap; }
+.fkeys a kbd { font: inherit; background: var(--brand); color: var(--brand-ink); padding: .1rem .3rem; border-radius: 1px; }
+.fkeys a:hover { background: var(--surface-2); color: var(--text); text-decoration: none; } .fkeys a.on { color: var(--brand); box-shadow: inset 0 2px 0 var(--brand); }
+body { padding-bottom: 1.9rem; }
+@media (max-width: 860px) { .fkeys { display: none; } body { padding-bottom: 0; } .tape { height: 1.35rem; } .clock { display: none; } }
+@media (max-width: 640px) { [data-theme="terminal"] .logo { padding: .1rem .35rem; letter-spacing: .04em; font-size: var(--fs-sm); } }
+
+/* ---------- 10. Terminal theme: black panels, amber labels, dense monospace data ---------- */
+[data-theme="terminal"] body { letter-spacing: 0; }
+[data-theme="terminal"] header.top { background: var(--bg); border-bottom: 1px solid var(--brand); }
+[data-theme="terminal"] .bar { padding-block: var(--space-1); }
+[data-theme="terminal"] .logo { background: var(--brand); color: var(--brand-ink); padding: .15rem .5rem; text-transform: uppercase; letter-spacing: .08em; font-size: var(--fs-md); border-radius: 1px; }
+[data-theme="terminal"] .logo span { color: var(--brand-ink); opacity: .75; }
+[data-theme="terminal"] .search input { background: var(--bg); border-color: var(--brand); color: var(--brand); text-transform: uppercase; letter-spacing: .04em; }
+[data-theme="terminal"] .search input::placeholder { color: var(--text-muted); text-transform: none; }
+[data-theme="terminal"] .search-ico { color: var(--brand); }
+[data-theme="terminal"] .kbd { border-radius: 1px; border-color: var(--brand); color: var(--brand); }
+[data-theme="terminal"] .pill { border-radius: 1px; text-transform: uppercase; letter-spacing: .05em; }
+[data-theme="terminal"] nav.main { background: var(--bg); border-right: 1px solid var(--border); padding: var(--space-3) var(--space-2); }
+[data-theme="terminal"] nav.main a { text-transform: uppercase; letter-spacing: .04em; font-size: var(--fs-sm); padding: .32rem var(--space-3); border-radius: 0; color: var(--text-2); }
+[data-theme="terminal"] nav.main a.on { background: var(--surface-2); color: var(--brand); box-shadow: inset 2px 0 0 var(--brand); }
+[data-theme="terminal"] .card { border-radius: 0; border: 1px solid var(--border); border-top: 2px solid var(--brand); background: var(--surface); padding: var(--space-3); margin-bottom: var(--space-3); }
+[data-theme="terminal"] .card > h2:first-child, [data-theme="terminal"] section > h2:first-child { color: var(--brand); border-bottom: 1px solid var(--border); padding-bottom: var(--space-1); letter-spacing: .08em; font-size: var(--fs-xs); font-weight: 700; }
+[data-theme="terminal"] h1 { color: var(--brand); text-transform: uppercase; letter-spacing: .06em; font-size: var(--fs-xl); border-bottom: 1px solid var(--border); padding-bottom: var(--space-2); }
+[data-theme="terminal"] h2 { color: var(--brand); }
+[data-theme="terminal"] main { padding-block: var(--space-3) var(--space-5); }
+[data-theme="terminal"] .tbl th { color: var(--brand); border-bottom: 1px solid var(--brand); letter-spacing: .06em; font-weight: 700; padding: var(--space-1) var(--space-2); }
+[data-theme="terminal"] .tbl td { padding: .18rem var(--space-2); border-bottom: 1px solid var(--border); }
+[data-theme="terminal"] .tbl tbody tr:nth-child(even) td { background: var(--surface-2); }
+[data-theme="terminal"] .tbl tbody tr:hover td { background: var(--selection); }
+[data-theme="terminal"] .btn, [data-theme="terminal"] .icon-btn, [data-theme="terminal"] input, [data-theme="terminal"] select { border-radius: 0; }
+[data-theme="terminal"] .btn.on, [data-theme="terminal"] .btn.primary { background: var(--brand); color: var(--brand-ink); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+[data-theme="terminal"] .viewtabs { border-bottom: 1px solid var(--brand); }
+[data-theme="terminal"] .vt { text-transform: uppercase; letter-spacing: .06em; font-size: var(--fs-sm); padding: var(--space-1) var(--space-4); border-bottom-width: 2px; }
+[data-theme="terminal"] .vt.on { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+[data-theme="terminal"] .tabs button, [data-theme="terminal"] .chip, [data-theme="terminal"] .ta-chip, [data-theme="terminal"] .badge { border-radius: 0; }
+[data-theme="terminal"] .tick, [data-theme="terminal"] .tile, [data-theme="terminal"] .stat { border-radius: 0; }
+[data-theme="terminal"] .ticker { border-radius: 0; border-color: var(--border); }
+[data-theme="terminal"] .tick .tname { color: var(--brand); text-transform: uppercase; letter-spacing: .05em; }
+[data-theme="terminal"] .tval, [data-theme="terminal"] .big { color: var(--text); }
+[data-theme="terminal"] footer { color: var(--text-muted); border-top: 1px solid var(--border); padding-top: var(--space-2); }
+[data-theme="terminal"] dialog, [data-theme="terminal"] .ta-pop, [data-theme="terminal"] .toast { border-radius: 0; border: 1px solid var(--brand); }
+[data-theme="terminal"] ::selection { background: var(--brand); color: var(--brand-ink); }
+[data-theme="terminal"] .scroll::-webkit-scrollbar { height: 8px; width: 8px; } [data-theme="terminal"] ::-webkit-scrollbar-thumb { background: var(--border-strong); }
+/* Terminal desk pages (Signals, Orders, Operator, Fundamentals, Settings) share these panel and meter styles in every theme */
+.desk-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); gap: var(--space-2); margin-bottom: var(--space-3); }
+.kpi { border: 1px solid var(--border); background: var(--surface); padding: var(--space-2) var(--space-3); }
+.kpi small { display: block; color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; }
+.kpi b { font-size: var(--fs-lg); font-variant-numeric: tabular-nums; }
+.meter { height: 6px; background: var(--surface-2); border: 1px solid var(--border); position: relative; min-width: 5rem; }
+.meter > i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--brand); }
+.meter.bi > i { background: var(--up); } .meter.bi > i.neg { background: var(--down); }
+.kill { background: var(--down); color: var(--brand-ink); border: 2px solid var(--down); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: .5rem 1.2rem; cursor: pointer; }
+.kill.armed { background: transparent; color: var(--down); }
+.state { display: inline-block; padding: .05rem .4rem; border: 1px solid var(--border-strong); font-size: var(--fs-xs); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.state.ok { color: var(--up); border-color: var(--up); } .state.bad { color: var(--down); border-color: var(--down); } .state.wait { color: var(--warn-text); border-color: var(--warn-text); }
+.desk-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--space-3); align-items: end; }
+.desk-form label { display: grid; gap: var(--space-1); }
+.desk-form input, .desk-form select { width: 100%; }
+.note { color: var(--text-muted); font-size: var(--fs-xs); }

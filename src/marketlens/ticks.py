@@ -75,7 +75,7 @@ def flush_all():
 
 def bars(sym, days=KEEP_DAYS):
     """One-minute bars [[epoch seconds, open, high, low, close, volume], ...] for the last `days` calendar days with data, oldest first."""
-    today = datetime.datetime.now(marketclock._IST).date()
+    today = datetime.datetime.fromtimestamp(time.time(), marketclock._IST).date()
     out = []
     with _lock:
         for back in range(days - 1, -1, -1):
@@ -89,7 +89,7 @@ def bars(sym, days=KEEP_DAYS):
 
 def prune(sym):
     """Delete saved days older than KEEP_DAYS (called now and then; cheap)."""
-    cutoff = (datetime.datetime.now(marketclock._IST).date() - datetime.timedelta(days=KEEP_DAYS + 2)).strftime("%Y%m%d")
+    cutoff = (datetime.datetime.fromtimestamp(time.time(), marketclock._IST).date() - datetime.timedelta(days=KEEP_DAYS + 2)).strftime("%Y%m%d")
     for k in store.disk_keys(f"ticks-{sym}-"):
         if k.rsplit("-", 1)[-1] < cutoff:
             try:

@@ -195,7 +195,7 @@ export function mount(root, ctx) {
     try {
       const h = await api(`/api/history/${encodeURIComponent(L.sym)}?range=5Y`, { quiet: true, retries: 1, timeoutMs: 60000, signal: st.ctl.signal });
       if (!h.available) throw new Error(h.reason || 'no price history for this symbol');
-      const cutoff = new Date(Date.now() - PERIOD_DAYS[L.period] * 86400000).toISOString().slice(0, 10), points = h.points.filter((p) => p[0] >= cutoff).map((p) => [p[0], p[1]]);
+      const cutoff = new Date(Date.now() - PERIOD_DAYS[L.period] * 86400000).toISOString().slice(0, 10), points = h.points.filter((p) => p[0] >= cutoff).map((p) => p.slice(0, 6));
       const opts = { capital: L.capital, feePct: L.feePct, slipPct: L.slipPct };
       const r = backtest(points, L.key, L.params[L.key] || {}, opts);
       st.result = { sym: L.sym, key: L.key, r, all: compareAll(points, opts), opts, truncated: h.truncated, earliest: h.earliest, first: points[0][0], last: points[points.length - 1][0], points: points.length };
