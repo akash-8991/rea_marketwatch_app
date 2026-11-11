@@ -233,7 +233,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.history(sym, (qs.get('range') || '1M').toUpperCase())) : err(400, 'bad symbol'); }
       m = /^\/api\/peers\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await market.peers(sym)) : err(400, 'bad symbol'); }
-      m = /^\/api\/news\/(india|global)$/.exec(p);
+      m = /^\/api\/news\/(india|global|economy)$/.exec(p);
       if (m) return json(await news.regionNews(m[1]));
       m = /^\/api\/news\/stock\/([^/]+)$/.exec(p);
       if (m) { const sym = decodeURIComponent(m[1]).toUpperCase(); return SYMBOL_RE.test(sym) ? json(await news.stockNews(sym)) : err(400, 'bad symbol'); }

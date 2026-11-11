@@ -192,3 +192,30 @@ export function sentiment(headlines) {
   const pos = scores.filter((s) => s[0] > 0).length, neg = scores.filter((s) => s[0] < 0).length;
   return { score: pyRound(avg, 3), label: sentimentLabel(avg, pos, neg), n: scores.length, pos, neg };
 }
+
+
+/* ---------- economy topics (the Economy category of Market updates); the same table as analysis.py ---------- */
+export const ECONOMY_TOPICS = [['central_bank', 'Central bank and rates'], ['growth', 'GDP and growth'], ['pmi', 'PMI and activity'], ['inflation', 'Inflation'], ['external', 'External sector (CAD, reserves)'],
+  ['trade', 'Exports and imports'], ['tax', 'Tax'], ['fiscal', 'Budget and fiscal'], ['jobs', 'Jobs'], ['demand', 'Demand and credit']];
+const ECON_RE = [
+  ['central_bank', /\b(?:RBI|Reserve Bank|MPC|monetary policy|repo rate|reverse repo|policy rate|CRR|SLR|rate cuts?|rate hikes?|rate decision|interest rates?|central banks?|Federal Reserve|FOMC|ECB|Bank of England|BoE|Bank of Japan|BoJ|PBOC|liquidity (?:infusion|injection|operations?)|OMO)\b|\bFed\b/i],
+  ['growth', /\b(?:GDP|GVA|gross domestic product|economic growth|growth (?:forecast|projection|outlook)|IIP|industrial (?:output|production)|core sector|eight core|economic survey|recession|economic activity|economy (?:grew|grows|expands?|contracts?|slows?))\b/i],
+  ['pmi', /\b(?:PMI|purchasing managers|manufacturing (?:activity|index)|services (?:activity|index)|business activity)\b/i],
+  ['inflation', /\b(?:CPI|WPI|inflation|consumer price|wholesale price|retail inflation|price index|disinflation|deflation)\b/i],
+  ['external', /\b(?:current account(?: deficit| surplus| balance)?|balance of payments|forex reserves?|foreign exchange reserves?|capital account|external debt|remittances?|FDI|foreign direct investment|FPI inflows?|FII flows?)\b|\bCAD\b|\bCAS\b(?=[\s\S]*account)/i],
+  ['trade', /\b(?:exports?|imports?|trade (?:deficit|surplus|gap|data|balance|talks)|merchandise trade|tariffs?|customs duty|anti-dumping)\b/i],
+  ['tax', /\b(?:GST|goods and services tax|income tax|direct tax|indirect tax|tax (?:collections?|revenue|cuts?|relief|reform|slabs?|rates?|receipts)|corporate tax|capital gains tax|TDS|STT|windfall tax|excise)\b/i],
+  ['fiscal', /\b(?:fiscal|union budget|budget|disinvestment|government borrowing|market borrowing|subsid(?:y|ies)|public spending|GST Council|stimulus|bond auction)\b/i],
+  ['jobs', /\b(?:unemployment|jobless|jobs? (?:data|report|growth|market)|payrolls?|employment|labou?r (?:force|market|data)|wages?|hiring (?:data|trend)|EPFO)\b/i],
+  ['demand', /\b(?:consumer (?:demand|spending|confidence|sentiment)|consumption|retail sales|household (?:spending|savings|debt)|rural demand|urban demand|credit growth|deposit growth|bank credit|monsoon|fuel demand|power demand)\b/i],
+];
+/** The economy topics a headline belongs to, in table order (empty = not an economy headline). CAD and CAS count only as written in capitals. */
+export function economyTopics(title) {
+  const t = title || '', out = [];
+  for (const [key, rx] of ECON_RE) {
+    const m = rx.exec(t); if (!m) continue;
+    if (key === 'external' && /^(cad|cas)$/i.test(m[0]) && m[0] !== 'CAD' && m[0] !== 'CAS') continue;
+    out.push(key);
+  }
+  return out;
+}

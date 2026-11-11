@@ -13,6 +13,11 @@ export const REGIONS = {
   global: { yahoo: [['^GSPC,^DJI,^IXIC', 'US', 'en-US'], ['^FTSE,^N225,^HSI', 'US', 'en-US']], google: [['Wall Street stocks', 'en-US', 'US', 'US:en'], ['global stock markets Fed ECB', 'en-US', 'US', 'US:en']] },
 };
 
+/* the Economy category of Market updates: policy, growth, inflation, external sector, trade, tax and fiscal news (only headlines that match an economy topic are kept) */
+REGIONS.economy = { yahoo: [], google: [['RBI monetary policy repo rate inflation India economy', 'en-IN', 'IN', 'IN:en'], ['India GDP PMI IIP economic growth', 'en-IN', 'IN', 'IN:en'],
+  ['India exports imports trade deficit current account deficit forex reserves', 'en-IN', 'IN', 'IN:en'], ['GST collections tax revenue fiscal deficit budget India', 'en-IN', 'IN', 'IN:en'],
+  ['Federal Reserve ECB central bank rate decision global economy inflation GDP', 'en-US', 'US', 'US:en']] };
+
 export class FeedError extends Error {}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -94,8 +99,9 @@ export class News {
     const build = async () => {
       const [lists, errors] = await this.gather(urls);
       if (!lists.some((l) => l.length)) throw new FeedError(errors.join('; ') || 'no headlines returned');
-      const items = merge(lists, 60, 15);
-      items.forEach((it) => { it.sentiment = analysis.headlineScore(it.title)[0]; });
+      let items = merge(lists, name === 'economy' ? 120 : 60, name === 'economy' ? 0 : 15);
+      items.forEach((it) => { it.sentiment = analysis.headlineScore(it.title)[0]; it.topics = analysis.economyTopics(it.title); });
+      if (name === 'economy') items = items.filter((it) => it.topics.length).slice(0, 80);   // only real economy headlines
       const out = { region: name, items, fetchedAt: this.now().toISOString().slice(0, 19), errors };
       await this.snaps.put('news-' + name, out);
       return out;

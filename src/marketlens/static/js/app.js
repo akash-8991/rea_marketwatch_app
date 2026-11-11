@@ -110,7 +110,7 @@ startVitals();
         'Based on NSE sector index changes for the session.', sec.map((s) => `${s.index}: ${signed(s.pct)}%.`));
     }
     if (ix && ix.pe) {
-      add('economy', `${ix.name} valuation: P/E ${ix.pe}, P/B ${ix.pb}, dividend yield ${ix.divYield}%`, 'Index-level valuation published by NSE.',
+      add('markets', `${ix.name} valuation: P/E ${ix.pe}, P/B ${ix.pb}, dividend yield ${ix.divYield}%`, 'Index-level valuation published by NSE.',
         D.valuation.slice(0, 6).map((v) => `${v.name}: P/E ${v.pe}, P/B ${v.pb}, dividend yield ${v.divYield}%.`));
     }
     return items;
@@ -310,14 +310,39 @@ startVitals();
         <a class="more" href="#/updates">« All updates</a></article>` };
     }
     const cat = store.get('ml.newscat', 'all');
-    const cats = ['all', ...new Set(updates.map((n) => n.cat))];
+    const ORDER = ['markets', 'stocks', 'trends', 'economy'], present = new Set(updates.map((n) => n.cat));
+    const cats = ['all', ...ORDER.filter((c) => c === 'economy' || present.has(c)), ...[...present].filter((c) => !ORDER.includes(c))];   // Economy is always there: its headlines come from the news feeds
     return {
-      html: `<h1>Market updates</h1><p class="muted">Generated from NSE data for the ${D.asOf ? fmtDate(D.asOf) : 'last'} session.</p>
+      html: `<h1>Market updates</h1><p class="muted">Generated from NSE data for the ${D.asOf ? fmtDate(D.asOf) : 'last'} session; the Economy tab shows live economy headlines.</p>
         <div class="tabs" id="news-cats">${cats.map((c) => `<button data-c="${c}" class="${c === cat ? 'on' : ''}">${esc(c)}</button>`).join('')}</div>
-        <section class="card"><ul class="list big">${updates.filter((n) => cat === 'all' || n.cat === cat).map((n) => `<li><a href="#/updates/${n.id}">${tint(n.title)}</a><p class="muted">${tint(n.sum)}</p></li>`).join('')}</ul></section>`,
-      after() { $$('#news-cats button').forEach((b) => b.addEventListener('click', () => { store.set('ml.newscat', b.dataset.c); route(); })); },
+        ${cat === 'economy' ? '<section class="card" id="econ-body"><p class="muted">Loading economy headlines…</p></section>'
+          : `<section class="card"><ul class="list big">${updates.filter((n) => cat === 'all' || n.cat === cat).map((n) => `<li><a href="#/updates/${n.id}">${tint(n.title)}</a><p class="muted">${tint(n.sum)}</p></li>`).join('')}</ul></section>${cat === 'all' ? '<section class="card" id="econ-top"><h2>Economy and policy headlines</h2><p class="muted">Loading…</p></section>' : ''}`}`,
+      after() {
+        $$('#news-cats button').forEach((b) => b.addEventListener('click', () => { store.set('ml.newscat', b.dataset.c); route(); }));
+        if (cat === 'economy') loadEconomy($('#econ-body'), false); else if (cat === 'all') loadEconomy($('#econ-top'), true);
+      },
     };
   };
+
+  /* Economy = macro and micro economy: central bank and rate decisions, GDP and growth, PMI, inflation, the external sector (CAD, CAS, forex reserves), exports and imports, tax, the budget, jobs, demand and credit.
+   * Headlines come from /api/news/economy (Google News queries, kept only when they match an economy topic: see ECONOMY_TOPICS in analysis.py / analysis.js). */
+  const ECON_LABELS = { central_bank: 'Central bank and rates', growth: 'GDP and growth', pmi: 'PMI and activity', inflation: 'Inflation', external: 'External sector (CAD, reserves)', trade: 'Exports and imports', tax: 'Tax', fiscal: 'Budget and fiscal', jobs: 'Jobs', demand: 'Demand and credit' };
+  function loadEconomy(host, compact) {
+    if (!host) return;
+    api('/api/news/economy').then((d) => {
+      if (!host.isConnected) return;
+      if (d.error) throw new Error(d.error);
+      if (d.disabled) { host.innerHTML = '<h2>Economy</h2><p>News is turned off (started with --no-news).</p>'; return; }
+      const topic = compact ? 'all' : store.get('ml.econtopic', 'all'), items = (d.items || []).filter((n) => topic === 'all' || (n.topics || []).includes(topic)), shown = compact ? items.slice(0, 6) : items;
+      const counts = Object.fromEntries(Object.keys(ECON_LABELS).map((k) => [k, (d.items || []).filter((n) => (n.topics || []).includes(k)).length]));
+      host.innerHTML = `${compact ? '<h2>Economy and policy headlines</h2>' : `<div class="chips" id="econ-topics" role="group" aria-label="Economy topics"><button type="button" class="chip ${topic === 'all' ? 'on' : ''}" data-t="all">All (${(d.items || []).length})</button>${Object.entries(ECON_LABELS).filter(([k]) => counts[k]).map(([k, l]) => `<button type="button" class="chip ${topic === k ? 'on' : ''}" data-t="${k}">${esc(l)} (${counts[k]})</button>`).join('')}</div>`}
+        ${shown.length ? `<ul class="list big">${shown.map((n) => `<li><a href="${esc(safeUrl(n.link))}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a>
+          <p class="muted">${esc(n.source)}${n.ts ? ' · ' + timeAgo(n.ts) : ''} ${n.sentiment > 0.05 ? '<span class="up" title="positive wording">●</span>' : n.sentiment < -0.05 ? '<span class="down" title="negative wording">●</span>' : ''} ${(n.topics || []).map((t) => `<span class="badge flat">${esc(ECON_LABELS[t] || t)}</span>`).join(' ')}</p></li>`).join('')}</ul>${compact ? '<a class="more" href="#/updates" id="econ-more">All economy headlines »</a>' : ''}` : '<p class="muted">No economy headlines match right now.</p>'}
+        <p class="muted">Fetched ${esc((d.fetchedAt || '').replace('T', ' '))}.${d.stale ? ' <span class="down">Saved copy: live feeds were unreachable.</span>' : ''} Headlines open the publisher’s site.</p>`;
+      $$('#econ-topics button', host).forEach((b) => b.addEventListener('click', () => { store.set('ml.econtopic', b.dataset.t); loadEconomy(host, false); }));
+      $('#econ-more', host)?.addEventListener('click', () => { store.set('ml.newscat', 'economy'); });
+    }).catch((e) => { if (host.isConnected) host.innerHTML = errorState('Could not load economy headlines', e.message, 'econ-retry'); $('#econ-retry', host)?.addEventListener('click', () => loadEconomy(host, compact)); });
+  }
 
   /* ----- quote page ----- */
   const detailCache = new Map();

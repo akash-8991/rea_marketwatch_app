@@ -165,7 +165,7 @@ def route_label(path):
         return "/api/candles/:sym"
     if path.startswith("/api/news/stock/"):
         return "/api/news/stock/:sym"
-    if re.fullmatch(r"/api/news/(india|global)", path):
+    if re.fullmatch(r"/api/news/(india|global|economy)", path):
         return "/api/news/:region"
     if path in KNOWN_ROUTES:
         return path
@@ -619,7 +619,7 @@ class Handler(BaseHTTPRequestHandler):
             if not market.SYMBOL_RE.match(sym):
                 return self._error(400, "bad symbol")
             return self._json(market.peers(sym))
-        m = re.match(r"^/api/news/(india|global)$", p)
+        m = re.match(r"^/api/news/(india|global|economy)$", p)
         if m:
             return self._json(news.region_news(m.group(1)))
         m = re.match(r"^/api/news/stock/([^/]+)$", p)

@@ -29,6 +29,13 @@ REGIONS = {
         "yahoo": [("^GSPC,^DJI,^IXIC", "US", "en-US"), ("^FTSE,^N225,^HSI", "US", "en-US")],
         "google": [("Wall Street stocks", "en-US", "US", "US:en"), ("global stock markets Fed ECB", "en-US", "US", "US:en")],
     },
+    # the Economy category of Market updates: policy, growth, inflation, external sector, trade, tax and fiscal news (only headlines that match an economy topic are kept)
+    "economy": {
+        "yahoo": [],
+        "google": [("RBI monetary policy repo rate inflation India economy", "en-IN", "IN", "IN:en"), ("India GDP PMI IIP economic growth", "en-IN", "IN", "IN:en"),
+                   ("India exports imports trade deficit current account deficit forex reserves", "en-IN", "IN", "IN:en"), ("GST collections tax revenue fiscal deficit budget India", "en-IN", "IN", "IN:en"),
+                   ("Federal Reserve ECB central bank rate decision global economy inflation GDP", "en-US", "US", "US:en")],
+    },
 }
 
 
@@ -144,9 +151,12 @@ def region_news(name):
         lists, errors = _gather(_region_urls(name))
         if not any(lists):
             raise FeedError("; ".join(errors) or "no headlines returned")
-        items = merge(lists, 60, min_each=15)
+        items = merge(lists, 60 if name != "economy" else 120, min_each=15 if name != "economy" else 0)
         for it in items:
             it["sentiment"] = analysis.headline_score(it["title"])[0]
+            it["topics"] = analysis.economy_topics(it["title"])
+        if name == "economy":
+            items = [it for it in items if it["topics"]][:80]   # only real economy headlines
         out = {"region": name, "items": items, "fetchedAt": datetime.datetime.now().isoformat(timespec="seconds"), "errors": errors}
         store.disk_put("news-" + name, out)
         return out

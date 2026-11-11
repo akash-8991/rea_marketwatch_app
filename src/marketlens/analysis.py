@@ -211,3 +211,52 @@ def sentiment(headlines):
     avg = sum(s for s, _, _ in scores) / len(scores)
     pos, neg = sum(1 for s, _, _ in scores if s > 0), sum(1 for s, _, _ in scores if s < 0)
     return {"score": round(avg, 3), "label": sentiment_label(avg, pos, neg), "n": len(scores), "pos": pos, "neg": neg}
+
+
+# ---------- economy topics (the Economy category of Market updates) ----------
+# Economy = macro and micro economy: central bank and policy-rate decisions, GDP and growth, PMI and activity data, inflation, the external sector (current account deficit or surplus,
+# forex reserves), trade (exports, imports), tax, the budget and fiscal numbers, jobs, and demand and credit. A headline belongs to every topic it matches. The same table is in
+# mobile/engine/analysis.js; tests/test_economy.py and mobile/tests/economy.test.mjs run the same headlines through both.
+ECONOMY_TOPICS = [
+    ("central_bank", "Central bank and rates"),
+    ("growth", "GDP and growth"),
+    ("pmi", "PMI and activity"),
+    ("inflation", "Inflation"),
+    ("external", "External sector (CAD, reserves)"),
+    ("trade", "Exports and imports"),
+    ("tax", "Tax"),
+    ("fiscal", "Budget and fiscal"),
+    ("jobs", "Jobs"),
+    ("demand", "Demand and credit"),
+]
+_ECON_RE = [
+    ("central_bank", re.compile(r"\b(?:RBI|Reserve Bank|MPC|monetary policy|repo rate|reverse repo|policy rate|CRR|SLR|rate cuts?|rate hikes?|rate decision|interest rates?|central banks?|Federal Reserve|FOMC|ECB|"
+                                r"Bank of England|BoE|Bank of Japan|BoJ|PBOC|liquidity (?:infusion|injection|operations?)|OMO)\b|\bFed\b", re.I)),
+    ("growth", re.compile(r"\b(?:GDP|GVA|gross domestic product|economic growth|growth (?:forecast|projection|outlook)|IIP|industrial (?:output|production)|core sector|eight core|economic survey|"
+                          r"recession|economic activity|economy (?:grew|grows|expands?|contracts?|slows?))\b", re.I)),
+    ("pmi", re.compile(r"\b(?:PMI|purchasing managers|manufacturing (?:activity|index)|services (?:activity|index)|business activity)\b", re.I)),
+    ("inflation", re.compile(r"\b(?:CPI|WPI|inflation|consumer price|wholesale price|retail inflation|price index|disinflation|deflation)\b", re.I)),
+    ("external", re.compile(r"\b(?:current account(?: deficit| surplus| balance)?|balance of payments|forex reserves?|foreign exchange reserves?|capital account|external debt|remittances?|"
+                            r"FDI|foreign direct investment|FPI inflows?|FII flows?)\b|\bCAD\b|\bCAS\b(?=.*account)", re.I | re.S)),
+    ("trade", re.compile(r"\b(?:exports?|imports?|trade (?:deficit|surplus|gap|data|balance|talks)|merchandise trade|tariffs?|customs duty|anti-dumping)\b", re.I)),
+    ("tax", re.compile(r"\b(?:GST|goods and services tax|income tax|direct tax|indirect tax|tax (?:collections?|revenue|cuts?|relief|reform|slabs?|rates?|receipts)|corporate tax|capital gains tax|TDS|STT|windfall tax|excise)\b", re.I)),
+    ("fiscal", re.compile(r"\b(?:fiscal|union budget|budget|disinvestment|government borrowing|market borrowing|subsid(?:y|ies)|public spending|GST Council|stimulus|bond auction)\b", re.I)),
+    ("jobs", re.compile(r"\b(?:unemployment|jobless|jobs? (?:data|report|growth|market)|payrolls?|employment|labou?r (?:force|market|data)|wages?|hiring (?:data|trend)|EPFO)\b", re.I)),
+    ("demand", re.compile(r"\b(?:consumer (?:demand|spending|confidence|sentiment)|consumption|retail sales|household (?:spending|savings|debt)|rural demand|urban demand|credit growth|deposit growth|"
+                          r"bank credit|monsoon|fuel demand|power demand)\b", re.I)),
+]
+
+
+def economy_topics(title):
+    """The economy topics a headline belongs to, in table order (empty list = not an economy headline). Abbreviations such as CAD are matched as written in capitals."""
+    t = title or ""
+    out = []
+    for key, rx in _ECON_RE:
+        m = rx.search(t)
+        if not m:
+            continue
+        # 'CAD' / 'CAS' only count as capitals (a name like "Cad" is not the current account deficit)
+        if key == "external" and m.group(0).lower() in ("cad", "cas") and m.group(0) not in ("CAD", "CAS"):
+            continue
+        out.append(key)
+    return out
