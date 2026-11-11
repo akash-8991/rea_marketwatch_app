@@ -196,6 +196,19 @@ class StylesheetRules(unittest.TestCase):
         self.assertIn('type="password"', view)
         self.assertNotRegex(view, r"localStorage|store\.set\([^)]*(secret|token)", "secrets are posted to the server, never stored in the page")
 
+    def test_backtest_gate_latency_and_desktop_pieces_exist(self):
+        for f in ("backtest-gate.js", "desk-backtest.js", "latency.js"):
+            self.assertTrue((STATIC / "js" / f).exists(), f)
+        ops = (STATIC / "js" / "ops-view.js").read_text()
+        self.assertIn("'latency'", ops)
+        self.assertIn("BUDGET_MS", ops)
+        sig = (STATIC / "js" / "signals-view.js").read_text()
+        self.assertIn("reportHtml", sig)
+        self.assertIn("range=10Y", (STATIC / "js" / "desk-backtest.js").read_text())
+        root = Path(__file__).resolve().parent.parent
+        self.assertTrue((root / ".github" / "workflows" / "desktop.yml").exists())
+        self.assertTrue((root / "packaging" / "build_desktop.py").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -99,15 +99,15 @@ toast.warn = (title, text, o) => toast({ title, text, variant: 'warning', ...o }
 toast.error = (title, text, o) => toast({ title, text, variant: 'destructive', ...o });
 
 /* ---------- dialog (native <dialog>: focus trap, Esc, inert background, focus restore come from the platform) ---------- */
-export function confirmDialog({ title, text = '', confirmLabel = 'Confirm', danger = false }) {
+export function confirmDialog({ title, text = '', html = '', confirmLabel = 'Confirm', danger = false, hideConfirm = false }) {
   return new Promise((resolve) => {
     const d = document.createElement('dialog');
     d.className = 'rounded-xl border border-border bg-popover p-0 text-foreground backdrop:bg-black/50';
     d.setAttribute('aria-labelledby', 'dlg-title');
-    d.innerHTML = `<form method="dialog" class="grid w-[min(24rem,90vw)] gap-3 p-5"><h2 id="dlg-title" class="m-0 text-base font-semibold" style="text-transform:none;letter-spacing:0;color:inherit">${esc(title)}</h2>
-      ${text ? `<p class="m-0 text-sm text-muted-foreground">${esc(text)}</p>` : ''}
+    d.innerHTML = `<form method="dialog" class="grid ${html ? 'w-[min(40rem,94vw)]' : 'w-[min(24rem,90vw)]'} gap-3 p-5" style="max-height:85vh;overflow:auto"><h2 id="dlg-title" class="m-0 text-base font-semibold" style="text-transform:none;letter-spacing:0;color:inherit">${esc(title)}</h2>
+      ${text ? `<p class="m-0 text-sm text-muted-foreground">${esc(text)}</p>` : ''}${html || ''}
       <div class="mt-2 flex justify-end gap-2"><button value="cancel" class="${buttonClass({ variant: 'outline' })}">Cancel</button>
-      <button value="ok" class="${buttonClass({ variant: danger ? 'destructive' : 'default' })}" autofocus>${esc(confirmLabel)}</button></div></form>`;
+      ${hideConfirm ? '' : `<button value="ok" class="${buttonClass({ variant: danger ? 'destructive' : 'default' })}" autofocus>${esc(confirmLabel)}</button>`}</div></form>`;
     d.addEventListener('close', () => { const ok = d.returnValue === 'ok'; d.remove(); resolve(ok); });
     document.body.appendChild(d); d.showModal();
   });

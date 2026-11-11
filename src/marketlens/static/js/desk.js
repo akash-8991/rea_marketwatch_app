@@ -3,12 +3,21 @@
 import { store, api } from './lib.js';
 import * as C from './desk-core.js';
 import { normalize as normAcc, placeOrder, valuation } from './paper.js';
+import { lat } from './latency.js';
+import { GATE_DEFAULT } from './backtest-gate.js';
 
 const KEY = 'ml.desk', PAPER = 'ml.paper';
 export const audit = new C.AuditLog({ get: (k, d) => store.get(k, d), set: (k, v) => store.set(k, v) });
-export const load = () => C.normalizeDesk(store.get(KEY, null));
-export const save = (d) => store.set(KEY, d);
-export const log = (type, data) => audit.append(type, data).catch(() => {});
+/* The desk state lives in memory and is written to storage a moment after a change (and when the page hides), so the trading path never waits on a storage write. */
+let cur = null, timer = 0;
+export const load = () => cur || (cur = C.normalizeDesk(store.get(KEY, null)));
+export function flushDesk() { if (timer) { clearTimeout(timer); timer = 0; } if (cur) store.set(KEY, cur); return audit.flush(); }
+export const save = (d) => { cur = d; if (!timer) timer = setTimeout(() => { timer = 0; if (cur) store.set(KEY, cur); }, 100); };
+if (typeof addEventListener === 'function') { addEventListener('pagehide', () => { flushDesk(); }); document.addEventListener('visibilitychange', () => { if (document.hidden) flushDesk(); }); }
+/** Queue an audit entry (hashed and saved in the background; see AuditLog). Returns nothing to wait for. */
+export const log = (type, data) => { audit.append(type, data).catch(() => {}); };
+export const loadGate = () => ({ ...GATE_DEFAULT, ...store.get('ml.desk.gate', {}) });
+export const saveGate = (g) => store.set('ml.desk.gate', g);
 const JSON_HEADERS = { 'Content-Type': 'application/json', 'X-Requested-With': 'MarketLens' };
 export const post = (path, body) => api(path, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body || {}), quiet: true, retries: 0, timeoutMs: 20000 });
 
@@ -27,7 +36,7 @@ export function accountContext(prices, sectorOf = () => 'Other') {
 }
 
 export async function quoteFor(sym) {
-  const q = await api(`/api/quote/${encodeURIComponent(sym)}`, { quiet: true, retries: 0, timeoutMs: 10000 });
+  const q = await lat.timeAsync('network_quote_fetch', () => api(`/api/quote/${encodeURIComponent(sym)}`, { quiet: true, retries: 0, timeoutMs: 10000 }), null);
   return { price: q.price, ageSeconds: q.ageMs != null ? q.ageMs / 1000 : (q.status === 'live' ? 0 : null), valueCr: q.valueCr, status: q.status, ts: q.ts };
 }
 
@@ -44,27 +53,29 @@ export function brokerFor(desk, { priceOf, shadow = false }) {
 
 /** Risk-check an intent and, depending on the mode, execute it, queue it for approval, or record it. Everything is audited. Returns {intent, decision, order?, queued?}. */
 export async function submit(intent, { quote, prices, sectorOf, brokerStatus = null, lot = 1 }) {
-  const desk = load(), now = Date.now(), live = desk.mode === 'live' || (desk.mode === 'manual' && desk.broker === 'zerodha');
+  const t0 = lat.clock(), desk = load(), now = Date.now(), live = desk.mode === 'live' || (desk.mode === 'manual' && desk.broker === 'zerodha');
   const ac = accountContext(prices, sectorOf);
-  const decision = C.riskEvaluate(intent, { ...ac, quote, openOrders: desk.orders.filter((o) => !C.TERMINAL.has(o.status)).length, recentIntents: desk.intents.map((i) => ({ key: i.idempotency_key, at: i.created_at })), recentOrderTimes: desk.recentOrderTimes,
-    limits: desk.limits, kill: desk.kill, strategyStatus: desk.strategyStatus, brokerConnected: !!(brokerStatus && brokerStatus.connected && brokerStatus.liveOrdersEnabled && !brokerStatus.killSwitch), live, lot, now });
+  const decision = lat.time('risk_evaluate', () => C.riskEvaluate(intent, { ...ac, quote, openOrders: desk.orders.filter((o) => !C.TERMINAL.has(o.status)).length, recentIntents: desk.intents.map((i) => ({ key: i.idempotency_key, at: i.created_at })), recentOrderTimes: desk.recentOrderTimes,
+    limits: desk.limits, kill: desk.kill, strategyStatus: desk.strategyStatus, brokerConnected: !!(brokerStatus && brokerStatus.connected && brokerStatus.liveOrdersEnabled && !brokerStatus.killSwitch), live, lot, now }));
   desk.decisions[intent.intent_id] = decision; desk.intents = [{ ...intent, status: 'new' }, ...desk.intents].slice(0, 300);
-  await log('intent', { intent_id: intent.intent_id, sym: intent.sym, side: intent.side, quantity: intent.quantity, limit_price: intent.limit_price, strategy: intent.strategy_id, rationale: intent.rationale });
-  await log('risk_decision', { intent_id: intent.intent_id, decision: decision.decision, reason_codes: decision.reason_codes, mode: desk.mode, limits: decision.limits_snapshot });
+  const t1 = lat.clock();
+  log('intent', { intent_id: intent.intent_id, sym: intent.sym, side: intent.side, quantity: intent.quantity, limit_price: intent.limit_price, strategy: intent.strategy_id, rationale: intent.rationale, backtest: intent.validation });
+  log('risk_decision', { intent_id: intent.intent_id, decision: decision.decision, reason_codes: decision.reason_codes, mode: desk.mode, limits: decision.limits_snapshot });
+  lat.record('audit_enqueue', lat.clock() - t1, 1);
   const mark = (status, extra = {}) => { desk.intents = desk.intents.map((i) => (i.intent_id === intent.intent_id ? { ...i, status, ...extra } : i)); };
-  if (decision.decision === 'REJECT') { mark('rejected'); save(desk); return { intent, decision }; }
+  if (decision.decision === 'REJECT') { mark('rejected'); save(desk); lat.record('decision_path_reject', lat.clock() - t0, 1); return { intent, decision }; }
   if (desk.mode === 'research') { mark('research_only'); save(desk); return { intent, decision, note: 'Research mode: nothing is executed. Switch the mode on the Operator page.' }; }
   if (desk.mode === 'manual') { mark('awaiting_approval'); save(desk); return { intent, decision, queued: true }; }
-  const out = await run(desk, intent, decision, prices); return { intent, decision, ...out };
+  const out = await run(desk, intent, decision, prices); lat.record(`decision_path_${desk.mode === 'live' ? 'zerodha' : desk.mode === 'shadow' ? 'shadow' : 'paper'}`, lat.clock() - t0, desk.mode === 'live' ? null : 1); return { intent, decision, ...out };
 }
 
 async function run(desk, intent, decision, prices) {
   const broker = brokerFor(desk, { priceOf: (s) => (prices && prices[s]) || intent.ref_price, shadow: desk.mode === 'shadow' });
-  const res = await C.execute(intent, decision, { broker, orders: desk.orders, now: Date.now });
+  const res = await lat.timeAsync(`execute_${broker.name}`, () => C.execute(intent, decision, { broker, orders: desk.orders, now: Date.now }), broker.name === 'zerodha' ? null : 1);
   desk.orders = [res.order, ...desk.orders.filter((o) => o.client_order_id !== res.order.client_order_id)].slice(0, 500); desk.recentOrderTimes = [...desk.recentOrderTimes.filter((t) => Date.now() - t < 5000), Date.now()];
   desk.intents = desk.intents.map((i) => (i.intent_id === intent.intent_id ? { ...i, status: res.order.status.toLowerCase() } : i));
   if (res.unknown) desk.incidents = [{ at: Date.now(), kind: 'unknown_order', detail: `${intent.sym} ${intent.side} ${intent.quantity}: no answer from ${broker.name}; the order will be reconciled, not resent`, order: res.order.client_order_id }, ...desk.incidents].slice(0, 100);
-  save(desk); await log('order', { client_order_id: res.order.client_order_id, status: res.order.status, broker: broker.name, history: res.order.history.map((h) => h.state), duplicate: !!res.duplicate, price: res.order.average_price });
+  save(desk); log('order', { client_order_id: res.order.client_order_id, status: res.order.status, broker: broker.name, history: res.order.history.map((h) => h.state), duplicate: !!res.duplicate, price: res.order.average_price });
   return { order: res.order, duplicate: !!res.duplicate };
 }
 
@@ -74,7 +85,7 @@ export async function approve(intentId, { quote, prices, sectorOf, brokerStatus,
   const live = desk.broker === 'zerodha', ac = accountContext(prices, sectorOf), now = Date.now();
   const decision = C.riskEvaluate(intent, { ...ac, quote, openOrders: desk.orders.filter((o) => !C.TERMINAL.has(o.status)).length, recentIntents: desk.intents.filter((i) => i.intent_id !== intentId).map((i) => ({ key: i.idempotency_key, at: i.created_at })),
     recentOrderTimes: desk.recentOrderTimes, limits: desk.limits, kill: desk.kill, strategyStatus: desk.strategyStatus, brokerConnected: !!(brokerStatus && brokerStatus.connected && brokerStatus.liveOrdersEnabled && !brokerStatus.killSwitch), live, lot, now });
-  desk.decisions[intentId] = decision; await log('approval', { intent_id: intentId, by: 'user', decision: decision.decision, reason_codes: decision.reason_codes });
+  desk.decisions[intentId] = decision; log('approval', { intent_id: intentId, by: 'user', decision: decision.decision, reason_codes: decision.reason_codes });
   if (decision.decision === 'REJECT') { desk.intents = desk.intents.map((i) => (i.intent_id === intentId ? { ...i, status: 'rejected' } : i)); save(desk); return { decision }; }
   const out = await run(desk, intent, decision, prices); return { decision, ...out };
 }

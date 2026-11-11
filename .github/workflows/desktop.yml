@@ -1,0 +1,61 @@
+name: Desktop app
+
+# Builds the MarketLens desktop app (a double-click program with its own window and the same sign-in as the phone app) for macOS, Windows and Linux.
+#   - every push/PR that touches the desktop launcher or packaging: build on all three systems and run the program's own login self-test (`--check`)
+#   - tag `desktop-v*`: attach the three zips and their checksums to a GitHub Release
+# The programs are not code-signed or notarised: the first start needs the one-time approval described in docs/INSTALL.md.
+on:
+  push:
+    branches: [main]
+    tags: ['desktop-v*']
+    paths: ['src/marketlens/**', 'packaging/**', 'pyproject.toml', '.github/workflows/desktop.yml']
+  pull_request:
+    paths: ['src/marketlens/desktop.py', 'src/marketlens/cli.py', 'packaging/**', '.github/workflows/desktop.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with: { python-version: '3.12' }
+      - name: Tests (Python)
+        if: matrix.os == 'ubuntu-24.04'
+        run: PYTHONPATH=src python -m unittest discover -s tests
+      - name: Install
+        run: python -m pip install . pyinstaller
+      - name: Build, self-test (sign up, sign in, sign out) and zip
+        run: python packaging/build_desktop.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: marketlens-desktop-${{ matrix.os }}
+          path: |
+            dist-desktop/*.zip
+            dist-desktop/*.sha256
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: marketlens-desktop-*
+          merge-multiple: true
+          path: out
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" out/* --repo "${GITHUB_REPOSITORY}" --title "MarketLens desktop app ${GITHUB_REF_NAME#desktop-v}" \
+            --notes "Double-click desktop app for macOS, Windows and Linux with the same sign-in as the phone app. Unsigned: see docs/INSTALL.md for the one-time approval on first start. Checksums are attached."

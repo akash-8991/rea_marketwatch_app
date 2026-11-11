@@ -17,7 +17,7 @@ export const MODES = [
 
 export const DEFAULT_LIMITS = {
   maxOrderValue: 100000, maxPositionPct: 20, maxGrossPct: 100, maxSectorPct: 40, perTradeRiskPct: 1, dailyLossPct: 3, maxOpenOrders: 10, maxOps: 5,
-  duplicateWindowSec: 300, staleSeconds: 30, maxDeviationPct: 2, minLiquidityCr: 1, marketOrders: false, allowShort: false, tickSize: 0.05, slippageBps: 15, sessionOnly: true,
+  duplicateWindowSec: 300, staleSeconds: 30, maxDeviationPct: 2, minLiquidityCr: 1, marketOrders: false, allowShort: false, tickSize: 0.05, slippageBps: 15, sessionOnly: true, requireBacktest: true,
 };
 
 export const FUSION_DEFAULT = {
@@ -126,7 +126,8 @@ const snap = (p, tick) => Math.round(p / tick) * tick;
 export function hash32(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); }
 
 /** A candidate trade from a fused signal: quantity from the per-trade risk budget and the stop distance, capped by order value and position size; LIMIT price with a slippage cap. */
-export function buildIntent({ fused, sym, price, atr, equity, limits = DEFAULT_LIMITS, strategyId = 'fusion', now = Date.now(), lot = 1, sector = 'Other' }) {
+export function buildIntent({ fused, sym, price, atr, equity, limits = DEFAULT_LIMITS, strategyId = 'fusion', now = Date.now(), lot = 1, sector = 'Other', validation = null }) {
+  if (validation) strategyId = validation.strategy;   // the trade belongs to the strategy whose ten-year backtest cleared the gate
   const side = fused.direction === 'SELL' ? 'SELL' : 'BUY', slip = limits.slippageBps / 1e4, tick = limits.tickSize || 0.05;
   const stopDist = Math.max(atr ? 2 * atr : price * 0.02, price * 0.002), riskAmt = equity * (limits.perTradeRiskPct / 100);
   let q = Math.floor(Math.min(riskAmt / stopDist, limits.maxOrderValue / price, (equity * limits.maxPositionPct) / 100 / price));
@@ -135,7 +136,7 @@ export function buildIntent({ fused, sym, price, atr, equity, limits = DEFAULT_L
   const bucket = Math.floor(now / (limits.duplicateWindowSec * 1000)), key = `${strategyId}|NSE:${sym}|${side}|${bucket}`;
   return { schema_version: '1.0', intent_id: `i-${hash32(key)}-${Math.floor(now / 1000)}`, idempotency_key: hash32(key), client_order_id: `ML${hash32(key)}`.slice(0, 20), strategy_id: strategyId, instrument_id: `NSE:${sym}`, sym, sector,
     side, quantity: q, order_type: 'LIMIT', limit_price: limitPrice, trigger_price: null, stop_loss: r2(snap(side === 'BUY' ? price - stopDist : price + stopDist, tick)), target: r2(snap(side === 'BUY' ? price + 1.5 * stopDist : price - 1.5 * stopDist, tick)),
-    max_slippage_bps: limits.slippageBps, expires_at: now + 5 * 60 * 1000, created_at: now, ref_price: price, rationale: { score: fused.score, confidence: fused.confidence, components: fused.components, reason_codes: fused.reason_codes, weights: fused.weights_used }, signal_snapshot_id: `${fused.version}:${sym}:${Math.floor(now / 1000)}` };
+    max_slippage_bps: limits.slippageBps, expires_at: now + 5 * 60 * 1000, created_at: now, ref_price: price, rationale: { score: fused.score, confidence: fused.confidence, components: fused.components, reason_codes: fused.reason_codes, weights: fused.weights_used }, signal_snapshot_id: `${fused.version}:${sym}:${Math.floor(now / 1000)}`, validation };
 }
 
 /* ---------- risk engine ---------- */
@@ -171,6 +172,13 @@ export function riskEvaluate(intent, ctx) {
   add('ORDER_RATE', (ctx.recentOrderTimes || []).filter((t) => now - t < 1000).length < L.maxOps, `more than ${L.maxOps} orders in one second`);
   add('EXPIRY', !intent.expires_at || intent.expires_at > now, 'the intent has expired');
   add('COMPLIANCE_TAG', !!intent.client_order_id && /^[A-Za-z0-9]{1,20}$/.test(intent.client_order_id), 'the order needs an algo tag (alphanumeric, up to 20 characters)');
+  if (L.requireBacktest) {   // the backtest gate (backtest-gate.js): a strategy with no passing, fresh ten-year backtest that agrees with the trade cannot trade
+    const v = intent.validation;
+    add('BACKTEST_PRESENT', !!v, 'no backtest of the strategy was run before this trade');
+    add('BACKTEST_GATE', !v || v.pass, v ? `the backtest did not clear the gate: ${(v.failed || []).join(', ')}` : 'no backtest');
+    add('BACKTEST_FRESH', !v || v.validUntil > now, 'the backtest is older than its validity window: run it again');
+    add('STRATEGY_SIGNAL', !v || (intent.side === 'BUY' ? v.signal === 'long' : v.signal !== 'long'), v ? `the strategy says ${v.signal} today, which does not support a ${intent.side}` : 'no strategy');
+  }
   if (ctx.live) add('BROKER_CONNECTED', !!ctx.brokerConnected, 'the broker is not connected');
   const failed = checks.filter((c) => !c.ok);
   return { intent_id: intent.intent_id, decision: failed.length ? 'REJECT' : 'APPROVE', reason_codes: failed.map((c) => c.code), failures: failed.map((c) => ({ code: c.code, detail: c.detail })), checks, calculated_exposure: { orderValue: Math.round(value), gross: Math.round(gross + value), grossPct: r2((gross + value) / eq * 100) },
@@ -247,16 +255,22 @@ export async function sha256(text) { return hex(await crypto.subtle.digest('SHA-
 
 /** Append-only, hash-chained event log: each entry carries the SHA-256 of the previous entry's hash and its own content, so any edit breaks verify(). `kv` = { get(key), set(key, value) }. */
 export class AuditLog {
-  constructor(kv, key = 'ml.desk.audit', cap = 4000) { this.kv = kv; this.key = key; this.cap = cap; }
-  load() { const v = this.kv.get(this.key, null); return v && Array.isArray(v.entries) ? v : { anchor: '0'.repeat(64), entries: [] }; }
-  async append(type, data = {}, at = Date.now()) {
+  constructor(kv, key = 'ml.desk.audit', cap = 4000, persistMs = 250) { this.kv = kv; this.key = key; this.cap = cap; this.persistMs = persistMs; this.mem = null; this.tail = Promise.resolve(); this.timer = 0; }
+  load() { if (!this.mem) { const v = this.kv.get(this.key, null); this.mem = v && Array.isArray(v.entries) ? v : { anchor: '0'.repeat(64), entries: [] }; } return this.mem; }
+  /** Queue an entry. Entries are hashed in order on a queue and saved a moment later, so the trading path never waits for hashing or storage; await the returned promise (or flush()) when you need it done. */
+  append(type, data = {}, at = Date.now()) {
+    const p = this.tail.then(() => this._write(type, data, at)); this.tail = p.catch(() => {}); return p;
+  }
+  async _write(type, data, at) {
     const log = this.load(), prev = log.entries.length ? log.entries[log.entries.length - 1].hash : log.anchor, body = JSON.stringify({ type, data, at });
     const entry = { seq: (log.entries.length ? log.entries[log.entries.length - 1].seq : 0) + 1, at, type, data, prev, hash: await sha256(prev + body) };
     log.entries.push(entry); if (log.entries.length > this.cap) { const cut = log.entries.splice(0, log.entries.length - this.cap); log.anchor = cut[cut.length - 1].hash; }
-    this.kv.set(this.key, log); return entry;
+    if (!this.timer) this.timer = setTimeout(() => { this.timer = 0; this.kv.set(this.key, this.mem); }, this.persistMs);
+    return entry;
   }
+  async flush() { await this.tail; if (this.timer) { clearTimeout(this.timer); this.timer = 0; } this.kv.set(this.key, this.load()); }
   async verify() {
-    const log = this.load(); let prev = log.anchor;
+    await this.tail; const log = this.load(); let prev = log.anchor;
     for (const e of log.entries) { const h = await sha256(prev + JSON.stringify({ type: e.type, data: e.data, at: e.at })); if (e.prev !== prev || e.hash !== h) return { ok: false, brokenAt: e.seq, entries: log.entries.length }; prev = e.hash; }
     return { ok: true, entries: log.entries.length, head: prev };
   }

@@ -5,6 +5,7 @@
  * sending more requests. Other screens can add symbols with MLLive.watch([...]). */
 import { api } from './lib.js';
 import { applyFeed } from './pure.js';
+import { lat } from './latency.js';
 export { applyFeed };
 
 const MAX_SYMBOLS = 40, FAST_MS = 100, SLOW_MS = 30000;
@@ -36,8 +37,8 @@ export function start({ D, bySym, repaint }) {
       const r = await api(`/api/live?symbols=${encodeURIComponent(syms.join(','))}`, { quiet: true, retries: 0, timeoutMs: 8000 });
       if (st.fails > 0) st.reconnects = (st.reconnects || 0) + 1;
       if (st.last && t0 - st.last > 2500 && r.market && r.market.live) st.gaps = (st.gaps || 0) + 1;   // answers further apart than the feed should allow
-      st.fails = 0; st.last = Date.now(); st.ok++; st.latency = Date.now() - t0; st.skew = typeof r.t === 'number' ? r.t - Date.now() : null;
-      D.liveAt = st.last; const changed = applyFeed(D, bySym, r); if (changed || !st.painted) { repaint(r); st.painted = true; } listeners.forEach((fn) => { try { fn(r); } catch (e) { /* a view's listener must not stop the feed */ } });
+      st.fails = 0; st.last = Date.now(); st.ok++; st.latency = Date.now() - t0; lat.record('network_feed_roundtrip', st.latency, null); st.skew = typeof r.t === 'number' ? r.t - Date.now() : null;
+      D.liveAt = st.last; const changed = lat.time('feed_apply', () => applyFeed(D, bySym, r)); if (changed || !st.painted) { lat.time('feed_repaint', () => repaint(r), null); st.painted = true; }   // repaint touches the page, so it has no 1 ms budget listeners.forEach((fn) => { try { fn(r); } catch (e) { /* a view's listener must not stop the feed */ } });
       wait = (r.intervalMs || FAST_MS) - (Date.now() - t0);
     } catch (e) { st.fails++; wait = Math.min(15000, 500 * 2 ** Math.min(st.fails, 5)); }
     next(wait);

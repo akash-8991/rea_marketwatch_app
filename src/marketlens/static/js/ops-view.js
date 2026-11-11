@@ -5,6 +5,7 @@ import { toast, buttonClass, confirmDialog } from './ui.js';
 import * as C from './desk-core.js';
 import * as desk from './desk.js';
 import { kpi, stateBadge, when, viewTabs, bindViewTabs } from './desk-ui.js';
+import { lat, Latency, BUDGET_MS } from './latency.js';
 
 export const CHECKLIST = [
   ['static_ip', 'A static IP is whitelisted for my Kite Connect app (Zerodha allows up to two) and this machine sends orders from it.'],
@@ -20,7 +21,7 @@ export const CHECKLIST = [
 export function mount(root, { D }) {
   let alive = true; const S = { tab: store.get('ml.ops.tab', 'health'), verify: null };
   root.innerHTML = `<div class="grid gap-3"><div><h1 class="m-0">Operator</h1><p class="m-0 mt-1 text-sm text-muted-foreground">Health, the kill switch, the trading mode, incidents, the audit trail and the pre-live checklist.</p></div><div id="op-top"></div>
-    ${viewTabs('op-tabs', [['health', 'Health'], ['mode', 'Mode and kill switch'], ['audit', 'Audit log'], ['check', 'Pre-live checklist'], ['inc', 'Incidents']], S.tab, 'Operator sections')}<div id="op-body"></div></div>`;
+    ${viewTabs('op-tabs', [['health', 'Health'], ['mode', 'Mode and kill switch'], ['latency', 'Latency'], ['audit', 'Audit log'], ['check', 'Pre-live checklist'], ['inc', 'Incidents']], S.tab, 'Operator sections')}<div id="op-body"></div></div>`;
   bindViewTabs(root, 'op-tabs', (t) => { S.tab = t; store.set('ml.ops.tab', t); paint(); });
   const live = () => (window.MLLive && window.MLLive.state) || {}, brokerP = () => desk.brokerStatus();
 
@@ -43,6 +44,17 @@ export function mount(root, { D }) {
       <section class="card"><h2>Kill switches by strategy and stock</h2><div class="desk-form"><label>Block a stock<input id="ks-sym" placeholder="RELIANCE" maxlength="24"></label><div><button type="button" class="btn" id="ks-add">Block</button></div></div>
       <div class="mt-2">${Object.keys(d.kill.instruments).filter((s) => d.kill.instruments[s]).map((s) => `<span class="state bad">${esc(s)} <button type="button" class="btn small" data-unblock="${esc(s)}">×</button></span> `).join('') || '<span class="muted">No stock is blocked.</span>'}</div></section>`;
   }
+  const ms = (x) => (x == null ? '—' : x < 0.01 ? `${(x * 1000).toFixed(1)} µs` : x < 10 ? `${x.toFixed(3)} ms` : `${x.toFixed(0)} ms`);
+  const latRows = (rows) => rows.map((s) => `<tr><td>${esc(s.stage)}</td><td class="num">${s.n}</td><td class="num">${ms(s.p50)}</td><td class="num">${ms(s.p95)}</td><td class="num">${ms(s.p99)}</td><td class="num">${ms(s.max)}</td><td>${s.budget == null ? '<span class="note">no budget (network or page)</span>' : s.within ? '<span class="state ok">p99 within 1 ms</span>' : '<span class="state bad">over 1 ms</span>'}${s.over ? ` <span class="note">${s.over} over</span>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Nothing measured yet. Run a benchmark, or use the Signals and Orders pages.</td></tr>';
+  async function latencyView() {
+    const all = lat.all(), inproc = all.filter((s) => s.budget != null), other = all.filter((s) => s.budget == null); let server = null; try { server = await api('/api/metrics', { quiet: true, retries: 0, timeoutMs: 4000 }); } catch (e) { /* the phone app has no server metrics */ }
+    const sr = server && server.routes ? Object.entries(server.routes).filter(([r, v]) => v.samples && ['/api/live', '/api/quote/:sym', '/api/quotes', '/api/history/:sym', '/api/bootstrap'].includes(r)) : [];
+    return `<section class="card"><h2>Latency against the 1 ms budget</h2><p class="note">The 1 ms budget applies to what this app computes in its own process: applying a feed answer, fusing signals, building an intent, the risk engine, executing on the paper or shadow broker, queueing an audit entry. It <b>cannot</b> apply to the network: NSE, Yahoo and Zerodha are hundreds of milliseconds away and even the local server round trip takes milliseconds. Those are measured below without a budget. (The requirements document's own target for signal to order is 500 ms.) A stage is "within budget" when its 99th percentile is under 1 ms; a rare slower sample (a garbage-collection pause, say) shows in the max column and the over count.</p>
+      <div class="flex gap-2"><button type="button" class="btn on" id="lt-bench">Run a 2,000-iteration benchmark</button><button type="button" class="btn" id="lt-reset">Clear</button><span id="lt-res" class="note self-center"></span></div></section>
+      <section class="card"><h2>In-process stages (budget 1 ms)</h2><div class="scroll"><table class="tbl"><thead><tr><th>Stage</th><th class="num">Samples</th><th class="num">p50</th><th class="num">p95</th><th class="num">p99</th><th class="num">max</th><th>Verdict</th></tr></thead><tbody>${latRows(inproc)}</tbody></table></div></section>
+      <section class="card"><h2>Page and network (no 1 ms budget)</h2><div class="scroll"><table class="tbl"><thead><tr><th>Stage</th><th class="num">Samples</th><th class="num">p50</th><th class="num">p95</th><th class="num">p99</th><th class="num">max</th><th></th></tr></thead><tbody>${latRows(other)}</tbody></table></div>
+      ${sr.length ? `<p class="note mt-2"><b>Server routes</b> (this process, including HTTP): ${sr.map(([r, v]) => `${esc(r)} p50 ${v.p50_ms} ms, p99 ${v.p99_ms} ms`).join(' · ')}</p>` : ''}</section>`;
+  }
   function auditView() {
     const log = desk.audit.load();
     return `<section class="card"><h2>Audit log</h2><p class="note">Append-only and hash-chained: every entry carries the SHA-256 of the one before it, so any edit shows up when you verify. It records signal runs, weight changes, intents, risk decisions with their reasons, approvals, orders and their states, reconciliation, mode changes and the kill switch.</p>
@@ -60,7 +72,7 @@ export function mount(root, { D }) {
   }
   async function paint() {
     top(); const b = $('#op-body', root); b.innerHTML = '<p class="muted pad">Loading…</p>';
-    b.innerHTML = await ({ health, mode: async () => mode(), audit: async () => auditView(), check: async () => check(), inc: async () => incidents() }[S.tab])(); if (!alive) return;
+    b.innerHTML = await ({ health, mode: async () => mode(), latency: latencyView, audit: async () => auditView(), check: async () => check(), inc: async () => incidents() }[S.tab])(); if (!alive) return;
     $$('[name=mode]', b).forEach((r) => r.addEventListener('change', async () => {
       const d = desk.load(), to = r.value, from = d.mode; if (to === from) return;
       if (to === 'live') { const bs = await brokerP(); const all = CHECKLIST.every(([k]) => d.checklist[k]); if (!bs || !bs.liveOrdersEnabled || !bs.connected || !all) { toast.error('Live mode is locked', !bs ? 'The broker connection is part of the desktop app.' : !bs.liveOrdersEnabled ? 'Start the server with --enable-live-orders.' : !bs.connected ? 'Connect Zerodha in Settings.' : 'Tick every item of the pre-live checklist.'); r.checked = false; $(`[name=mode][value="${from}"]`, b).checked = true; return; } }
@@ -71,6 +83,16 @@ export function mount(root, { D }) {
     $('#md-strat', b)?.addEventListener('change', async (e) => { const d = desk.load(); d.strategyStatus = e.target.value; desk.save(d); await desk.log('strategy_status', { status: d.strategyStatus }); });
     $('#ks-add', b)?.addEventListener('click', async () => { const s = $('#ks-sym', b).value.trim().toUpperCase(); if (!/^[A-Z0-9&_-]{1,24}$/.test(s)) return; const d = desk.load(); d.kill.instruments[s] = true; desk.save(d); await desk.log('kill_switch', { instrument: s, on: true }); paint(); });
     $$('[data-unblock]', b).forEach((x) => x.addEventListener('click', async () => { const d = desk.load(); delete d.kill.instruments[x.dataset.unblock]; desk.save(d); await desk.log('kill_switch', { instrument: x.dataset.unblock, on: false }); paint(); }));
+    $('#lt-reset', b)?.addEventListener('click', () => { lat.reset(); paint(); });
+    $('#lt-bench', b)?.addEventListener('click', async () => {
+      const out = $('#lt-res', b); out.textContent = 'Running…'; const L = new Latency(), n = 2000, now = Date.now();
+      const prop = (a, s) => ({ schema_version: '1.0', proposal_id: a, agent_type: a, instrument_id: 'NSE:BENCH', direction: 'BUY', score: s, confidence: 0.8, horizon_seconds: 900, valid_until: now + 6e5, evidence: [{ kind: 'x', id: '1', weight: 1 }], reason_codes: [], model_version: 'x' });
+      const props = ['news', 'technical', 'fundamental', 'derivatives', 'regime'].map((a) => prop(a, 0.6)), ctx = { account: { equity: 1e6, cash: 1e6 }, positions: [], quote: { price: 1200, ageSeconds: 1, valueCr: 500 }, openOrders: 0, recentIntents: [], recentOrderTimes: [], limits: { requireBacktest: false, sessionOnly: false }, kill: {}, now };
+      const broker = { name: 'shadow', async place(p) { return { status: 'FILLED', broker_order_id: 'S', price: 100, filled: p.quantity }; } };
+      for (let i = 0; i < n; i++) { const t0 = L.clock(); const f = L.time('fuse (5 agents)', () => C.fuse(props, C.FUSION_DEFAULT, now)); const it = L.time('build_intent', () => C.buildIntent({ fused: f, sym: 'BENCH', price: 1200, atr: 20, equity: 1e6, now: now + i * 1000 })); const d = L.time('risk_evaluate', () => C.riskEvaluate(it, ctx)); await L.timeAsync('execute (shadow broker)', () => C.execute({ ...it, client_order_id: `ML${i}` }, d, { broker, orders: [], now: () => now }), BUDGET_MS); L.record('signal_to_order', L.clock() - t0, BUDGET_MS); if (i % 200 === 0) await new Promise((r) => setTimeout(r)); }
+      for (const s of L.all()) { for (let k = 0; k < 1; k++) lat.record(`bench: ${s.stage}`, s.p50, BUDGET_MS); }
+      const so = L.stats('signal_to_order'); out.innerHTML = `Signal to order (fuse, intent, 24 risk checks, execute): p50 ${ms(so.p50)}, p99 ${ms(so.p99)}, max ${ms(so.max)} over ${n} runs: ${so.p99 <= BUDGET_MS ? '<span class="state ok">p99 within 1 ms</span>' : '<span class="state bad">over 1 ms</span>'}`;
+    });
     $('#au-verify', b)?.addEventListener('click', async () => { S.verify = await desk.audit.verify(); paint(); });
     $('#au-export', b)?.addEventListener('click', () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([desk.audit.toCsv()], { type: 'text/csv' })); a.download = 'marketlens-audit.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); });
     $$('[data-ck]', b).forEach((c) => c.addEventListener('change', async () => { const d = desk.load(); d.checklist[c.dataset.ck] = c.checked; desk.save(d); await desk.log('checklist', { item: c.dataset.ck, checked: c.checked }); paint(); }));

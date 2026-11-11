@@ -23,6 +23,12 @@ classifiers = [
 marketlens = "marketlens.cli:main"
 marketlens-options-mcp = "marketlens.options_mcp:main"
 
+[project.gui-scripts]
+marketlens-desktop = "marketlens.desktop:main"
+
+[project.optional-dependencies]
+desktop = ["pywebview>=5"]   # a native window; without it the desktop app uses Chrome/Edge in app mode
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

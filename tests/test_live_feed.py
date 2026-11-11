@@ -133,6 +133,37 @@ class Intraday(Base):
         self.assertEqual(market.intraday("AAA")["bars"], [])
 
 
+class Latency(Base):
+    """What the app computes in its own process must fit the 1 ms budget (network hops are measured elsewhere and have none)."""
+    def median_ms(self, fn, n=400):
+        import time as real
+        samples = []
+        for _ in range(n):
+            t0 = real.perf_counter()
+            fn()
+            samples.append((real.perf_counter() - t0) * 1000)
+        samples.sort()
+        return samples[len(samples) // 2], samples[int(len(samples) * 0.99)]
+
+    def test_a_fully_cached_live_feed_answers_in_well_under_a_millisecond(self):
+        syms = [f"S{i}" for i in range(12)]
+        market.live_feed(syms)                  # warm: one NSE call per symbol
+        calls = self.calls["quote"]
+        p50, p99 = self.median_ms(lambda: market.live_feed(syms))
+        self.assertEqual(self.calls["quote"], calls, "nothing was fetched: it came from memory")
+        self.assertLess(p50, 1.0, f"12 symbols p50 {p50:.3f} ms")
+        self.assertLess(self.median_ms(lambda: market.live_feed(["S0"]))[0], 1.0)
+
+    def test_recording_a_tick_is_microseconds(self):
+        k = [0]
+
+        def rec():
+            k[0] += 1
+            ticks.record("LAT", 100 + k[0] % 7, 1000 + k[0], f"2026-10-26 10:{(k[0] // 60) % 60:02d}:{k[0] % 60:02d}", now=self.now)
+        p50, p99 = self.median_ms(rec, 2000)
+        self.assertLess(p50, 0.2, f"tick p50 {p50:.4f} ms")
+
+
 class Indices(Base):
     def test_an_index_key_resolves_charts_and_records(self):
         self.assertEqual(market.index_key("NIFTY 50"), "IDX_NIFTY_50")

@@ -35,7 +35,7 @@ test('fusion: weights renormalise over present agents, a missing required agent 
 const fused = { direction: 'BUY', score: 0.6, confidence: 0.7, components: {}, reason_codes: [], version: 'fusion-1', weights_used: {} };
 const intentOf = (o = {}) => C.buildIntent({ fused, sym: 'RELIANCE', price: 1200, atr: 20, equity: 1000000, now: MON_10_30, sector: 'Energy', ...o });
 const quote = (o = {}) => ({ price: 1200, ageSeconds: 3, valueCr: 500, ...o });
-const ctxOf = (o = {}) => ({ account: { equity: 1000000, cash: 1000000 }, positions: [], quote: quote(), openOrders: 0, recentIntents: [], recentOrderTimes: [], limits: {}, kill: {}, now: MON_10_30, ...o });
+const ctxOf = (o = {}) => ({ account: { equity: 1000000, cash: 1000000 }, positions: [], quote: quote(), openOrders: 0, recentIntents: [], recentOrderTimes: [], limits: { requireBacktest: false }, kill: {}, now: MON_10_30, ...o });
 const codes = (d) => d.reason_codes;
 
 test('intents are sized from the risk budget, tick-aligned, tagged and idempotent', () => {
@@ -92,12 +92,20 @@ test('reconciliation finds differences between the order book and the account', 
   assert.equal(C.reconcilePositions(orders, [{ sym: 'A', qty: 6 }]).ok, true); const r = C.reconcilePositions(orders, [{ sym: 'A', qty: 5 }, { sym: 'Z', qty: 1 }]); assert.deepEqual(r.breaks.map((b) => b.sym).sort(), ['A', 'Z']);
 });
 
-test('the audit log is hash-chained: it verifies, detects any edit, exports, and keeps its anchor when old entries roll off', async () => {
-  const mem = {}, kv = { get: (k, d) => (k in mem ? JSON.parse(mem[k]) : d), set: (k, v) => { mem[k] = JSON.stringify(v); } }, log = new C.AuditLog(kv, 'a', 5);
+test('the audit log is hash-chained: it verifies, detects any edit after a reload, exports, and keeps its anchor when old entries roll off', async () => {
+  const mem = {}, kv = { get: (k, d) => (k in mem ? JSON.parse(mem[k]) : d), set: (k, v) => { mem[k] = JSON.stringify(v); } }, log = new C.AuditLog(kv, 'a', 5, 5);
   for (let n = 1; n <= 3; n++) await log.append('risk', { n }, 1000 + n);
   assert.equal((await log.verify()).ok, true); assert.equal(log.load().entries[1].prev, log.load().entries[0].hash); assert.match(log.toCsv(), /^seq,time,type,hash,data\n1,/);
-  const t = JSON.parse(mem.a); t.entries[1].data.n = 99; mem.a = JSON.stringify(t); const v = await log.verify(); assert.equal(v.ok, false); assert.equal(v.brokenAt, 2);
-  const mem2 = {}, kv2 = { get: (k, d) => (k in mem2 ? JSON.parse(mem2[k]) : d), set: (k, v2) => { mem2[k] = JSON.stringify(v2); } }, l2 = new C.AuditLog(kv2, 'b', 3); for (let n = 1; n <= 8; n++) await l2.append('x', { n }, n); assert.equal(l2.load().entries.length, 3); assert.equal((await l2.verify()).ok, true);
+  await log.flush(); const t = JSON.parse(mem.a); t.entries[1].data.n = 99; mem.a = JSON.stringify(t);
+  const reloaded = new C.AuditLog(kv, 'a', 5, 5), v = await reloaded.verify(); assert.equal(v.ok, false); assert.equal(v.brokenAt, 2);
+  const mem2 = {}, kv2 = { get: (k, d) => (k in mem2 ? JSON.parse(mem2[k]) : d), set: (k, v2) => { mem2[k] = JSON.stringify(v2); } }, l2 = new C.AuditLog(kv2, 'b', 3, 5); for (let n = 1; n <= 8; n++) await l2.append('x', { n }, n); assert.equal(l2.load().entries.length, 3); assert.equal((await l2.verify()).ok, true);
+});
+
+test('the audit log queues entries without making the caller wait, keeps their order, and saves them a moment later', async () => {
+  const mem = {}, kv = { get: (k, d) => (k in mem ? JSON.parse(mem[k]) : d), set: (k, v) => { mem[k] = JSON.stringify(v); } }, log = new C.AuditLog(kv, 'q', 4000, 20);
+  const t0 = performance.now(); for (let n = 1; n <= 200; n++) log.append('e', { n }, n); const queued = performance.now() - t0;
+  assert.ok(queued < 50, `queueing 200 entries took ${queued} ms`); assert.equal('q' in mem, false, 'nothing is written synchronously');
+  await log.flush(); const e = JSON.parse(mem.q).entries; assert.equal(e.length, 200); assert.deepEqual(e.map((x) => x.data.n), Array.from({ length: 200 }, (_, i) => i + 1)); assert.equal((await log.verify()).ok, true);
 });
 
 test('desk state: defaults, normalisation of junk, and no live mode by default', () => {

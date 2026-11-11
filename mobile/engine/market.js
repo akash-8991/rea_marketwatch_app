@@ -397,7 +397,7 @@ export class Market {
     if (!covers(rec)) {
       const points = rec ? [...rec.points] : [];
       let end = rec ? rec.next || '' : '', next = rec ? rec.next || null : null, complete = false, guard = 0;
-      while (!complete && guard++ < 16 && (!points.length || points[0][0] > cutoff)) {
+      while (!complete && guard++ < 44 && (!points.length || points[0][0] > cutoff)) {   // up to ten years: 40 pieces of three months
         // indices: up to 12 months a call, same chaining
         const h = isIndex ? await this.nse.bh('get_index_history', { indexName: await this.indexName(sym), months: 12, endDate: end }) : await this.nse.bh('get_stock_history', { symbol: sym, months: 3, endDate: end });
         const rows = (h.data || h.history || h.rows || []).filter((r) => r.close && r.date).map((r) => [r.date, r.close, r.volume ?? null, r.open ?? null, r.high ?? null, r.low ?? null]);

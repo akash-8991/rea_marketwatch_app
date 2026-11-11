@@ -4,6 +4,20 @@ MarketLens runs on your own device and keeps your data there. Choose how: **Andr
 [MOBILE.md](MOBILE.md)), **container** (section 2b), or **Python** on a computer (below). The desktop version is a local
 web app you open in your browser; it needs Python and nothing else (no database server, no Node.js, no other packages).
 
+## Desktop app (double-click, same sign-in as the phone app)
+
+A program for macOS, Windows and Linux that starts the server and opens its own window: no Python, no terminal, no browser setup. Download the zip for your system from the **desktop-v...** release on GitHub and its checksum file, unzip, and start it:
+
+* **macOS**: open `MarketLens.app`. The program is not code-signed or notarised, so macOS asks once: right-click the app, choose *Open*, then *Open* again (or run `xattr -dr com.apple.quarantine MarketLens.app`).
+* **Windows**: open `MarketLens\MarketLens.exe`. SmartScreen warns about an unknown publisher: *More info*, then *Run anyway*.
+* **Linux**: run `MarketLens/MarketLens`.
+
+**Sign-in is always required.** The first time you create an account (name, email, date of birth, user ID, password); afterwards you sign in with the user ID and password and stay signed in, even after closing the app, until you sign out, but never longer than 15 days. The forgot-user-ID and change-credentials flows are the phone app's. There is no way to switch sign-in off in the desktop app (`--no-login` exists only on the `marketlens` command). Accounts and data live in your user data folder (`~/Library/Application Support/MarketLens`, `%APPDATA%\\MarketLens`, `~/.local/share/MarketLens`) and survive updates. Accounts are per device: the phone and the desktop keep their own.
+
+The window is a native window if pywebview is installed (`pip install "marketlens[desktop]"`), otherwise Chrome, Edge, Chromium or Brave in app mode (their own window, no tabs, a private profile in the data folder), otherwise a small control window or your default browser. Closing the window quits. Options: `--port`, `--data-dir`, `--offline`, `--no-news`, `--browser` (default browser), `--enable-live-orders` (see BROKER.md), and `--check` (starts on a spare port, signs a throw-away user up and in, prints OK, exits: how the packages are tested).
+
+From a checkout or pip: `pip install .` then `marketlens-desktop`. To build the program yourself: `pip install . pyinstaller` then `python packaging/build_desktop.py` (writes `dist-desktop/MarketLens-<os>-<arch>-<version>.zip` and its checksum, after running the program's own `--check`). The macOS build was built and checked on a Mac; the Windows and Linux builds are produced and checked by the `Desktop app` workflow on those systems and have not been run by hand.
+
 ## 1. Requirements
 - Python **3.9 or newer** (tested on 3.12, 3.13 and 3.14; 3.9 to 3.11 are untested).
 - A modern browser.
@@ -163,7 +177,7 @@ password twice). `marketlens --list-users` shows who is registered.
 ## 10. For developers
 ```bash
 pip install -e .
-PYTHONPATH=src python3 -m unittest discover -s tests          # 229 offline tests, no network needed
+PYTHONPATH=src python3 -m unittest discover -s tests          # 237 offline tests, no network needed
 python3 tools/loadtest.py --url http://127.0.0.1:8080 --concurrency 1 16 --seconds 8 --cookie "ml_session=<cookie>"
 python3 -m pip wheel . --no-deps -w dist                       # build the wheel (needs setuptools)
 ```

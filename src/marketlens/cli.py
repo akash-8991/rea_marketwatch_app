@@ -55,10 +55,26 @@ def main(argv=None):
         v = optiondb.verify_audit()
         print(json.dumps({"auditChain": "intact" if v["ok"] else "BROKEN", **v}))
         return 0 if v["ok"] else 1
+    httpd = start(args)
+    url = f"http://{config.settings.host}:{config.settings.port}/"
+    if not args.no_open:
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopped.")
+    finally:
+        httpd.server_close()
+    return 0
+
+
+def start(args):
+    """Create the server for already-parsed, already-configured arguments, start the background jobs, print the start-up summary and return the server (not yet serving).
+    Shared by the command line and the desktop app so both start exactly the same thing."""
     from . import server  # imported after configuration so paths pick up the data dir
     httpd = server.make_server()
     from . import securities
-    securities.start_background()   # loads the saved stock list and refreshes it from the official download when it is a week old
+    securities.start_background()   # loads the saved stock lists and refreshes them from the official downloads when they are due
     url = f"http://{config.settings.host}:{config.settings.port}/"
     print(f"MarketLens {__version__} running at {url}")
     print(f"  data folder : {config.settings.data_dir}")
@@ -70,12 +86,4 @@ def main(argv=None):
           f"{'endpoint configured' if config.settings.fo_url else 'no MCP endpoint (see --fo-mcp-url)'}")
     print(f"  live orders : {'ENABLED (--enable-live-orders): orders can be sent to Zerodha' if config.settings.live_orders else 'off (reading and paper trading only)'}")
     print("  Press Ctrl+C to stop.")
-    if not args.no_open:
-        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print("\nStopped.")
-    finally:
-        httpd.server_close()
-    return 0
+    return httpd

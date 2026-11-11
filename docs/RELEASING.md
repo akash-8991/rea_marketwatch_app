@@ -27,6 +27,7 @@ against the Python engine's output (`android.yml`). Pull requests run tests and 
 # 2. make sure main is green (Actions tab), then:
 git tag v0.10.0        && git push origin v0.10.0          # container image :0.10.0 and :0.10
 git tag mobile-v0.13.0 && git push origin mobile-v0.13.0   # Android APK as a GitHub Release
+git tag desktop-v0.10.0 && git push origin desktop-v0.10.0   # desktop app zips for macOS, Windows and Linux as a GitHub Release (workflow "Desktop app")
 ```
 The Android version code is the workflow run number, so each build can update the previous one if signed with the same key.
 

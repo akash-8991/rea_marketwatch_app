@@ -347,11 +347,16 @@ def quote(sym, state=None, fresh=False):
         _fresh_at[sym] = time.time()
         store.forget(key)
     try:
-        fut = _quote_pool.submit(store.cached, key, quote_ttl(sym), lambda: nse.cm("cm_get_stock_quote", {"symbol": sym}))
-        try:
-            q = (fut.result(timeout=QUOTE_DEADLINE) or {}).get("stock")     # if NSE has not replied by then the saved copy is used; the request still finishes and fills the cache
-        except FutureTimeout:
-            raise RuntimeError(f"NSE did not answer within {QUOTE_DEADLINE:g} s")
+        ttl = quote_ttl(sym)
+        hit = store.peek(key)
+        if hit is not None:                                                  # fresh in memory: answer in-thread, no worker hop (the sub-millisecond path)
+            q = (hit or {}).get("stock")
+        else:
+            fut = _quote_pool.submit(store.cached, key, ttl, lambda: nse.cm("cm_get_stock_quote", {"symbol": sym}))
+            try:
+                q = (fut.result(timeout=QUOTE_DEADLINE) or {}).get("stock")     # if NSE has not replied by then the saved copy is used; the request still finishes and fills the cache
+            except FutureTimeout:
+                raise RuntimeError(f"NSE did not answer within {QUOTE_DEADLINE:g} s")
     except Exception as e:
         error = str(e)[:120]
         saved = {x["sym"]: x for x in (store.disk_get("bootstrap") or {}).get("stocks", [])}.get(sym)
@@ -400,8 +405,11 @@ def quotes(symbols, state=None, fresh=False):
         if not SYMBOL_RE.match(sym):
             return {"sym": sym, "status": "unavailable", "reason": "not a valid NSE symbol", "exchange": "NSE", "fetchedAt": int(time.time() * 1000)}
         return quote(sym, state, fresh)
-    with ThreadPoolExecutor(max_workers=max(2, nse.MAX_WORKERS * 2)) as ex:
-        out = list(ex.map(one, listed[:50]))
+    if all(store.peek("lq:" + x) is not None for x in listed[:50] if SYMBOL_RE.match(x)):
+        out = [one(x) for x in listed[:50]]                                  # everything is fresh in memory: no thread pool, no waiting
+    else:
+        with ThreadPoolExecutor(max_workers=max(2, nse.MAX_WORKERS * 2)) as ex:
+            out = list(ex.map(one, listed[:50]))
     return {"quotes": out, "requested": len(listed), "truncated": len(listed) > 50, "fetchedAt": int(time.time() * 1000)}
 
 
@@ -446,7 +454,7 @@ def history(sym, rng):
         points = list(rec["points"]) if rec else []
         end = (rec or {}).get("next") or ""
         nxt, complete, guard = (rec or {}).get("next"), False, 0
-        while not complete and guard < 16 and (not points or points[0][0] > cutoff):
+        while not complete and guard < 44 and (not points or points[0][0] > cutoff):   # up to ten years: 40 pieces of three months
             guard += 1
             if is_index:   # indices: up to 12 months a call, same chaining; the volume is the index's traded volume when NSE publishes one
                 h = nse.bh("get_index_history", {"indexName": index_name(sym), "months": 12, "endDate": end})
