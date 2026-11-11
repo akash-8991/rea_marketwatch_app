@@ -8,7 +8,7 @@ web app you open in your browser; it needs Python and nothing else (no database 
 
 A program for macOS, Windows and Linux that starts the server and opens its own window: no Python, no terminal, no browser setup. Download the zip for your system from the **desktop-v...** release on GitHub and its checksum file, unzip, and start it:
 
-* **macOS**: open `MarketLens.app`. The program is not code-signed or notarised, so macOS asks once: right-click the app, choose *Open*, then *Open* again (or run `xattr -dr com.apple.quarantine MarketLens.app`).
+* **macOS**: unzip (double-click the zip in Finder) and open `MarketLens.app`. **If macOS says "MarketLens is damaged and can't be opened", the app is not damaged**: it is not notarised by Apple, and macOS flags files downloaded from the internet. Remove the flag once in Terminal, then open it normally: `xattr -dr com.apple.quarantine ~/Downloads/MarketLens.app` (use the folder you unzipped into). From 0.10.3 the app is sealed with an ad-hoc signature, so macOS shows the milder "unidentified developer" prompt instead; if you see that, right-click the app, choose *Open*, then *Open* again (or System Settings, Privacy and Security, *Open Anyway*). Use the zip from the GitHub release, not a copy re-zipped by another tool. The program is not code-signed or notarised, so macOS asks once: right-click the app, choose *Open*, then *Open* again (or run `xattr -dr com.apple.quarantine MarketLens.app`).
 * **Windows**: open `MarketLens\MarketLens.exe`. SmartScreen warns about an unknown publisher: *More info*, then *Run anyway*.
 * **Linux**: run `MarketLens/MarketLens`.
 
@@ -28,13 +28,13 @@ Check Python: `python3 --version` (on Windows: `py --version`).
 ## 2. Install
 
 ### Option A: from the release package (recommended)
-Download `marketlens-0.10.2-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
+Download `marketlens-0.10.3-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
 
 ```bash
 shasum -a 256 -c SHA256SUMS.txt          # macOS/Linux: checks both files; "OK" for the one you downloaded
 python3 -m venv ~/marketlens-env         # a private environment keeps it separate from other Python tools
 source ~/marketlens-env/bin/activate     # Windows: %USERPROFILE%\marketlens-env\Scripts\activate
-pip install marketlens-0.10.2-py3-none-any.whl
+pip install marketlens-0.10.3-py3-none-any.whl
 marketlens
 ```
 (`shasum -c` reports "FAILED open or read" for a file you did not download; that is expected.)
