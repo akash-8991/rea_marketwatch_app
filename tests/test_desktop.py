@@ -50,3 +50,30 @@ class Desktop(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Certificates(unittest.TestCase):
+    """A frozen app has no system certificate store: the launcher points OpenSSL at certifi's bundle so HTTPS to NSE verifies."""
+
+    def test_bundle_is_used_when_no_valid_cert_file_is_set(self):
+        import os
+        import tempfile
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"SSL_CERT_FILE": "/no/such/file.pem"}):
+            try:
+                import certifi
+            except ImportError:
+                self.skipTest("certifi not installed")
+            self.assertTrue(config.use_bundled_certificates())
+            self.assertEqual(os.environ["SSL_CERT_FILE"], certifi.where())
+        with tempfile.NamedTemporaryFile(suffix=".pem") as mine, mock.patch.dict(os.environ, {"SSL_CERT_FILE": mine.name}):
+            self.assertFalse(config.use_bundled_certificates())   # a valid file you set yourself (company proxy) is left alone
+            self.assertEqual(os.environ["SSL_CERT_FILE"], mine.name)
+
+    def test_self_check_fails_on_certificate_errors_but_not_on_no_network(self):
+        import ssl
+        from unittest import mock
+        with mock.patch("socket.create_connection", side_effect=ssl.SSLCertVerificationError(1, "unable to get local issuer certificate")):
+            self.assertTrue(desktop.tls_check().startswith("FAIL"))
+        with mock.patch("socket.create_connection", side_effect=OSError("no route")):
+            self.assertFalse(desktop.tls_check().startswith("FAIL"))

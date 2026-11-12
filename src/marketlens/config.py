@@ -45,6 +45,24 @@ def inbox_dir() -> Path:
     return Path(settings.option_inbox) if settings.option_inbox else settings.data_dir / "option-inbox"
 
 
+def use_bundled_certificates():
+    """Make HTTPS work where Python has no certificate store of its own: a frozen desktop app (PyInstaller) and python.org builds on macOS ship without one, so every request to NSE,
+    Yahoo, Google and Zerodha fails certificate verification ("no answer from NSE"). Point OpenSSL at certifi's bundle when it is installed. A SSL_CERT_FILE you set yourself
+    (for example for a company proxy) that exists is left alone."""
+    cur = os.environ.get("SSL_CERT_FILE")
+    if cur and os.path.exists(cur):
+        return False
+    try:
+        import certifi
+        path = certifi.where()
+    except ImportError:
+        return False
+    if os.path.exists(path):
+        os.environ["SSL_CERT_FILE"] = path
+        return True
+    return False
+
+
 def configure(**kw) -> Settings:
     for k, v in kw.items():
         if v is None:

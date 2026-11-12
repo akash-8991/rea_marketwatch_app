@@ -30,6 +30,7 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    config.use_bundled_certificates()
     config.configure(host=args.host, port=args.port, data_dir=args.data_dir, offline=True if args.offline else None,
                      news=False if args.no_news else None, fo_url=args.fo_mcp_url,
                      option_inbox=args.option_inbox, option_interval=args.option_interval,

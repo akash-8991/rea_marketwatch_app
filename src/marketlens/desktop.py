@@ -118,6 +118,19 @@ def open_window(url, quit_server):
             return "default browser"
 
 
+def tls_check(host="mcp.nseindia.in"):
+    """Does HTTPS verification work in this program? A certificate failure is a FAIL (the app could not reach NSE for anyone); no network at all is only noted."""
+    import ssl
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((host, 443), timeout=8) as s, ctx.wrap_socket(s, server_hostname=host):
+            return f"HTTPS certificates verified ({host})"
+    except ssl.SSLCertVerificationError as e:
+        return f"FAIL: HTTPS certificate verification failed ({getattr(e, 'verify_message', e)}): the program has no certificate store"
+    except OSError:
+        return "HTTPS not tested (no network)"
+
+
 def self_check(out_file=None):
     """Prove the packaged app can sign a user up and in: start on a spare port with a throw-away data folder, sign up, read the session back, sign out. Exit code 0 means it works."""
     tmp = tempfile.mkdtemp(prefix="marketlens-check-")
@@ -159,7 +172,11 @@ def self_check(out_file=None):
         assert call("GET", "/api/auth/me", cookie=cookie)[0] == 401, "signed out"
         st, cookie2, body = call("POST", "/api/auth/login", {"userId": "checkuser1", "password": "Zq9!vLm4#Rw7xK2p"})
         assert st == 200 and cookie2, f"sign-in failed: {st} {body}"
-        report(f"OK: {APP_NAME} {__version__} - sign-up, session, sign-out and sign-in work (login is required).")
+        tls = tls_check()
+        if tls.startswith("FAIL"):
+            report(tls)
+            return 1
+        report(f"OK: {APP_NAME} {__version__} - sign-up, session, sign-out and sign-in work (login is required); {tls}.")
         httpd.shutdown()
         return 0
     except AssertionError as e:
@@ -185,6 +202,7 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    config.use_bundled_certificates()   # a frozen app has no system certificate store: without this every request to NSE fails verification
     config.configure(data_dir=args.data_dir)
     _ensure_streams()
     if args.check:

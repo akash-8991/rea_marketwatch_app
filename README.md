@@ -28,9 +28,9 @@ Python standard library.
 | You have | Do this | Time |
 |---|---|---|
 | **An Android phone** | On the phone, tap **[Download MarketLens for Android](https://github.com/akash-8991/rea_marketwatch_app/raw/main/downloads/MarketLens-android.apk)** (a ready-built `.apk`, nothing to run), open the downloaded file, allow the install, create an account. Standalone: no computer needed. Details: [docs/MOBILE.md](docs/MOBILE.md). | 2 min |
-| **A Mac, Windows or Linux computer** | Download the zip for your system: **[macOS (Apple silicon)](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.10.3/MarketLens-macos-arm64-0.10.3.zip)**, **[Windows](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.10.3/MarketLens-windows-amd64-0.10.3.zip)** or **[Linux](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.10.3/MarketLens-linux-x86_64-0.10.3.zip)** (each has a `.sha256` checksum file next to it on the [releases page](https://github.com/akash-8991/rea_marketwatch_app/releases)), unzip, open **MarketLens**, create an account. A double-click program: no Python or terminal needed. It is not notarised, so macOS and Windows ask once before opening it. If macOS says the app is "damaged", run `xattr -dr com.apple.quarantine ~/Downloads/MarketLens.app` in Terminal (it is not damaged); details in [docs/INSTALL.md](docs/INSTALL.md). | 2 min |
+| **A Mac, Windows or Linux computer** | Download the zip for your system: **[macOS (Apple silicon)](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.10.4/MarketLens-macos-arm64-0.10.4.zip)**, **[Windows](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.10.4/MarketLens-windows-amd64-0.10.4.zip)** or **[Linux](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.10.4/MarketLens-linux-x86_64-0.10.4.zip)** (each has a `.sha256` checksum file next to it on the [releases page](https://github.com/akash-8991/rea_marketwatch_app/releases)), unzip, open **MarketLens**, create an account. A double-click program: no Python or terminal needed. It is not notarised, so macOS and Windows ask once before opening it. If macOS says the app is "damaged", run `xattr -dr com.apple.quarantine ~/Downloads/MarketLens.app` in Terminal (it is not damaged); details in [docs/INSTALL.md](docs/INSTALL.md). | 2 min |
 | **Docker** | `docker run -d --name marketlens -p 127.0.0.1:8080:8080 -v marketlens-data:/data ghcr.io/akash-8991/rea_marketwatch_app:latest`, then open <http://127.0.0.1:8080>. Or use [docker-compose.yml](docker-compose.yml). | 1 min |
-| **Python 3.9+** | `pip install marketlens-0.10.3-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
+| **Python 3.9+** | `pip install marketlens-0.10.4-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
 | **An iPhone** | Not available yet; needs a Mac with Xcode to build. See [docs/MOBILE.md](docs/MOBILE.md), section 7. | |
 
 The first screen asks you to create an account; after that you sign in with your user ID and password. You then stay signed in
@@ -58,7 +58,7 @@ happen on GitHub), [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/ARCHITECTURE.
 Requires Python 3.9 or newer (tested on 3.12, 3.13 and 3.14; 3.9-3.11 are untested).
 
 ```bash
-pip install marketlens-0.10.3-py3-none-any.whl     # or: pip install .  from a source checkout
+pip install marketlens-0.10.4-py3-none-any.whl     # or: pip install .  from a source checkout
 marketlens                                         # opens http://127.0.0.1:8080/
 marketlens-options-mcp --data-dir <data folder>    # optional: MCP (stdio) server over the option-chain database
 ```

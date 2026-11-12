@@ -8,15 +8,17 @@ web app you open in your browser; it needs Python and nothing else (no database 
 
 A program for macOS, Windows and Linux that starts the server and opens its own window: no Python, no terminal, no browser setup. Download the zip for your system from the **desktop-v...** release on GitHub and its checksum file, unzip, and start it:
 
-* **macOS**: unzip (double-click the zip in Finder) and open `MarketLens.app`. **If macOS says "MarketLens is damaged and can't be opened", the app is not damaged**: it is not notarised by Apple, and macOS flags files downloaded from the internet. Remove the flag once in Terminal, then open it normally: `xattr -dr com.apple.quarantine ~/Downloads/MarketLens.app` (use the folder you unzipped into). From 0.10.3 the app is sealed with an ad-hoc signature, so macOS shows the milder "unidentified developer" prompt instead; if you see that, right-click the app, choose *Open*, then *Open* again (or System Settings, Privacy and Security, *Open Anyway*). Use the zip from the GitHub release, not a copy re-zipped by another tool. The program is not code-signed or notarised, so macOS asks once: right-click the app, choose *Open*, then *Open* again (or run `xattr -dr com.apple.quarantine MarketLens.app`).
+* **macOS**: unzip (double-click the zip in Finder) and open `MarketLens.app`. **If macOS says "MarketLens is damaged and can't be opened", the app is not damaged**: it is not notarised by Apple, and macOS flags files downloaded from the internet. Remove the flag once in Terminal, then open it normally: `xattr -dr com.apple.quarantine ~/Downloads/MarketLens.app` (use the folder you unzipped into). From 0.10.4 the app is sealed with an ad-hoc signature, so macOS shows the milder "unidentified developer" prompt instead; if you see that, right-click the app, choose *Open*, then *Open* again (or System Settings, Privacy and Security, *Open Anyway*). Use the zip from the GitHub release, not a copy re-zipped by another tool. The program is not code-signed or notarised, so macOS asks once: right-click the app, choose *Open*, then *Open* again (or run `xattr -dr com.apple.quarantine MarketLens.app`).
 * **Windows**: open `MarketLens\MarketLens.exe`. SmartScreen warns about an unknown publisher: *More info*, then *Run anyway*.
 * **Linux**: run `MarketLens/MarketLens`.
+
+**Troubleshooting: "no answer from NSE" and screens that never change.** Before 0.10.4 the packaged app (and a `pip` install on a Python without a certificate store, such as python.org builds on macOS) could not verify HTTPS certificates, so every request to NSE, Yahoo, Google and Zerodha failed. From 0.10.4 the app uses the certifi certificate bundle, the error now says when the cause is a certificate check, and the package self-test (`--check`) fails if HTTPS verification does not work. If you still see it, check that the computer can reach `mcp.nseindia.in` (VPN, firewall or a company proxy that replaces certificates: set `SSL_CERT_FILE` to your proxy's CA file), and update to the latest desktop release. Pip users: `pip install certifi`.
 
 **Sign-in is always required.** The first time you create an account (name, email, date of birth, user ID, password); afterwards you sign in with the user ID and password and stay signed in, even after closing the app, until you sign out, but never longer than 15 days. The forgot-user-ID and change-credentials flows are the phone app's. There is no way to switch sign-in off in the desktop app (`--no-login` exists only on the `marketlens` command). Accounts and data live in your user data folder (`~/Library/Application Support/MarketLens`, `%APPDATA%\\MarketLens`, `~/.local/share/MarketLens`) and survive updates. Accounts are per device: the phone and the desktop keep their own.
 
 The window is a native window if pywebview is installed (`pip install "marketlens[desktop]"`), otherwise Chrome, Edge, Chromium or Brave in app mode (their own window, no tabs, a private profile in the data folder), otherwise a small control window or your default browser. Closing the window quits. Options: `--port`, `--data-dir`, `--offline`, `--no-news`, `--browser` (default browser), `--enable-live-orders` (see BROKER.md), and `--check` (starts on a spare port, signs a throw-away user up and in, prints OK, exits: how the packages are tested).
 
-From a checkout or pip: `pip install .` then `marketlens-desktop`. To build the program yourself: `pip install . pyinstaller` then `python packaging/build_desktop.py` (writes `dist-desktop/MarketLens-<os>-<arch>-<version>.zip` and its checksum, after running the program's own `--check`). The macOS build was built and checked on a Mac; the Windows and Linux builds are produced and checked by the `Desktop app` workflow on those systems and have not been run by hand.
+From a checkout or pip: `pip install .` then `marketlens-desktop`. To build the program yourself: `pip install . pyinstaller certifi` then `python packaging/build_desktop.py` (writes `dist-desktop/MarketLens-<os>-<arch>-<version>.zip` and its checksum, after running the program's own `--check`). The macOS build was built and checked on a Mac; the Windows and Linux builds are produced and checked by the `Desktop app` workflow on those systems and have not been run by hand.
 
 ## 1. Requirements
 - Python **3.9 or newer** (tested on 3.12, 3.13 and 3.14; 3.9 to 3.11 are untested).
@@ -28,13 +30,13 @@ Check Python: `python3 --version` (on Windows: `py --version`).
 ## 2. Install
 
 ### Option A: from the release package (recommended)
-Download `marketlens-0.10.3-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
+Download `marketlens-0.10.4-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
 
 ```bash
 shasum -a 256 -c SHA256SUMS.txt          # macOS/Linux: checks both files; "OK" for the one you downloaded
 python3 -m venv ~/marketlens-env         # a private environment keeps it separate from other Python tools
 source ~/marketlens-env/bin/activate     # Windows: %USERPROFILE%\marketlens-env\Scripts\activate
-pip install marketlens-0.10.3-py3-none-any.whl
+pip install marketlens-0.10.4-py3-none-any.whl
 marketlens
 ```
 (`shasum -c` reports "FAILED open or read" for a file you did not download; that is expected.)

@@ -11,6 +11,7 @@ import http.client
 import json
 import os
 import queue
+import ssl
 import threading
 import time
 import urllib.error
@@ -52,10 +53,10 @@ class _Lane:
             conn.request("POST", path, body=json.dumps(body).encode(), headers=h)
             r = conn.getresponse()
             raw = r.read()
-        except (http.client.HTTPException, OSError):
+        except (http.client.HTTPException, OSError) as e:
             conn.close()
             self.conns.pop(urllib.parse.urlparse(url).netloc, None)
-            raise urllib.error.URLError("connection error")
+            raise urllib.error.URLError("TLS certificate check failed: " + str(getattr(e, "verify_message", None) or e)[:100] if isinstance(e, ssl.SSLCertVerificationError) else "connection error: " + type(e).__name__)
         if r.status >= 400:
             if r.status != 404:
                 self.conns.pop(urllib.parse.urlparse(url).netloc, None)
@@ -187,7 +188,7 @@ def rpc(url, method, params=None, attempts=14):
             if isinstance(e, urllib.error.URLError):
                 net_fails += 1
                 if net_fails >= 3:
-                    raise RuntimeError(f"{method} failed: no answer from NSE (3 tries)")
+                    raise RuntimeError(f"{method} failed: no answer from NSE (3 tries): {e.reason}")
         finally:
             if paced:   # the politeness gap holds the lane, not the caller's reply
                 t = threading.Timer(PACE, _lanes.put, [lane]); t.daemon = True; t.start()

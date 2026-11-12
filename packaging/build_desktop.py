@@ -26,7 +26,7 @@ def build():
     shutil.rmtree(OUT, ignore_errors=True)
     OUT.mkdir()
     args = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--name", "MarketLens", "--distpath", str(OUT / "app"), "--workpath", str(OUT / "work"),
-            "--specpath", str(OUT / "work"), "--paths", str(ROOT / "src"), "--collect-data", "marketlens", "--hidden-import", "marketlens.server", "--hidden-import", "marketlens.cli",
+            "--specpath", str(OUT / "work"), "--paths", str(ROOT / "src"), "--collect-data", "marketlens", "--collect-data", "certifi", "--hidden-import", "certifi", "--hidden-import", "marketlens.server", "--hidden-import", "marketlens.cli",
             "--hidden-import", "tkinter", str(ROOT / "packaging" / "marketlens_desktop.py")]
     subprocess.run(args, check=True, cwd=ROOT)
     app = OUT / "app"
