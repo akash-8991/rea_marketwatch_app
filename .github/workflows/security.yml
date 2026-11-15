@@ -1,0 +1,57 @@
+name: Security checks
+
+# Dependency vulnerabilities, secrets in the repository and its history, and static analysis of the Python code. Read-only: nothing is published and no secret is used.
+# Runs on every push and pull request that touches code or dependencies, and weekly (new advisories appear without a code change).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with: { node-version: 22 }
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with: { python-version: '3.12' }
+      - name: npm audit (phone app, runtime packages; build tools in ui/)
+        run: |
+          for d in mobile ui; do (cd $d && npm ci --ignore-scripts --no-audit --no-fund && npm audit --audit-level=high); done
+      - name: pip-audit (the Python package and its optional desktop extra)
+        run: |
+          python -m pip install pip-audit .[desktop]
+          pip-audit --skip-editable
+      - name: Bandit (static analysis of src/)
+        run: |
+          python -m pip install bandit
+          bandit -r src -lll -q
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { fetch-depth: 0, persist-credentials: false }
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+  filesystem:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - name: Trivy (vulnerabilities, secrets, Dockerfile and workflow misconfiguration)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true

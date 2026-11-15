@@ -78,6 +78,19 @@ Opening an older database adds the v2 columns automatically (idempotent). Older 
 original hash formula, so the chain verifies across the upgrade. Rollback: v1 code ignores the extra columns, but rows it
 writes afterwards will not extend a v2 chain correctly; restore the database from backup if you roll back after writing.
 
+## Who can reach the server
+MarketLens assumes one owner. What changes when it is reachable by anyone else:
+* **Administrator.** The first account (or, in an older database, the earliest one) is the administrator. Only the administrator can use `/api/broker/*` (Zerodha credentials, login, account, orders, kill switch), `/api/audit`, `/api/metrics`, `/api/options/import` and see the database path; other users see only whether the broker connection is up. Grant it with `marketlens --make-admin USERID`. With `--no-login` the machine owner is the only user.
+* **Registration.** Open on loopback (a family computer); beyond loopback only the first account may register unless you pass `--open-signup`.
+* **Online recovery** (name + email + date of birth) is on for loopback and off beyond it (`--allow-recovery` to force it; it is weak: anyone who knows the three facts can take over the account). The owner can always run `marketlens --reset-password USERID`. Signed-in users change their password with the current password (Settings, Account).
+* **TLS and hosts.** The app speaks plain HTTP. Behind a TLS reverse proxy pass `--public-url https://your.host` (adds `Secure` to the cookie and accepts only that Host and Origin) and `--trusted-proxy <proxy IP>` (its `X-Forwarded-For` is then used as the client address; from any other peer it is ignored). Without them the start-up message warns that the Host header is not checked.
+* **Lockouts** are per user ID and client address (5 failures, 15 minutes doubling to 24 hours) plus a much higher bar per user ID across all addresses (30 failures), so a stranger cannot cheaply lock the owner out. `marketlens --reset-password` clears every lock.
+* **Sessions** last up to 15 days; beyond loopback they also expire after 8 idle hours (`--session-idle-hours`).
+* **Accounts can be deleted** (Settings, Account: needs the password). The administrator cannot delete themselves while other accounts exist and they are the only administrator. The audit log keeps its rows (user ID and event names, no personal fields).
+* **Audit head.** The audit chain is unkeyed, so it detects edits only by someone who cannot rewrite the whole database. Record `marketlens --audit` output's `head` elsewhere from time to time and check it later with `marketlens --audit --audit-expect <head>`.
+* **Files.** The data folder is mode 0700 and the database, its `-wal`/`-shm` files and `broker.json` are 0600 (POSIX); the process also runs with umask 077.
+* Start-up refuses `--enable-live-orders` on a non-loopback address with `--no-login`.
+
 ## Accounts
 | Event (audit log) | Meaning |
 |---|---|

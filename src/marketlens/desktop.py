@@ -202,6 +202,7 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    config.harden_files()
     config.use_bundled_certificates()   # a frozen app has no system certificate store: without this every request to NSE fails verification
     config.configure(data_dir=args.data_dir)
     _ensure_streams()

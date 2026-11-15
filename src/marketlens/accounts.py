@@ -21,11 +21,13 @@ import time
 import unicodedata
 
 from . import optiondb
+from . import config
 from .config import settings
 
 SESSION_MAX = 15 * 24 * 3600      # you stay signed in (even after closing the app) until you sign out, but never longer than 15 days
 SESSION_IDLE = SESSION_MAX        # no separate idle timeout
-LOCK_AFTER = 5                    # consecutive failures before a lockout
+LOCK_AFTER = 5                    # consecutive failures from one address for one user ID before a lockout
+LOCK_AFTER_USER = 30              # failures from all addresses together before the account itself is locked (so a stranger cannot cheaply lock the owner out)
 LOCK_BASE = 15 * 60               # first lockout; doubles each time, up to LOCK_MAX
 LOCK_MAX = 24 * 3600
 USER_ID_RE = re.compile(r"^[A-Za-z0-9_.-]{4,32}$")
@@ -39,7 +41,7 @@ changeme secret default marketlens nifty sensex stockmarket""".split())
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, user_id TEXT NOT NULL UNIQUE COLLATE NOCASE, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-  dob TEXT NOT NULL, pw_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_login TEXT);
+  dob TEXT NOT NULL, pw_hash TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_login TEXT, is_admin INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY, user_pk INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created REAL NOT NULL, expires REAL NOT NULL, last_seen REAL NOT NULL);
@@ -63,6 +65,10 @@ def _conn():
     c = optiondb._db()
     if _ready["conn"] is not c:
         c.executescript(SCHEMA)
+        if "is_admin" not in {r[1] for r in c.execute("PRAGMA table_info(users)")}:   # databases from before the administrator role
+            c.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+        if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] and not c.execute("SELECT 1 FROM users WHERE is_admin=1").fetchone():
+            c.execute("UPDATE users SET is_admin=1 WHERE id=(SELECT MIN(id) FROM users)")   # the first account of an existing installation is its owner
         _ready["conn"] = c
     return c
 
@@ -165,11 +171,11 @@ def _check_lock(c, key):
         raise AuthError(f"Too many failed attempts. Try again in about {max(1, round(wait / 60))} min.", 429, retry_after=wait)
 
 
-def _fail(c, key):
+def _fail(c, key, limit=None):
     row = c.execute("SELECT fails, level FROM throttle WHERE key=?", (key,)).fetchone()
     fails, level = (row[0] + 1, row[1]) if row else (1, 0)
     locked = 0.0
-    if fails >= LOCK_AFTER:
+    if fails >= (limit or LOCK_AFTER):
         level += 1
         locked, fails = now() + min(LOCK_BASE * 2 ** (level - 1), LOCK_MAX), 0
     c.execute("INSERT INTO throttle (key, fails, locked_until, level) VALUES (?,?,?,?) ON CONFLICT(key) DO UPDATE SET fails=?, locked_until=?, level=?",
@@ -198,31 +204,39 @@ def signup(name, email, dob, user_id, password):
     pw = hash_password(password)           # the slow step happens before the lock is taken
     with optiondb._lock:
         c = _conn()
+        if not config.signup_open(c.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0):
+            _log("signup_failed", user_id, "registration is closed on this server", "denied")
+            raise AuthError("Registration is closed on this server. Ask the administrator, or start it with --open-signup.", 403)
         try:
             cur = c.execute("INSERT INTO users (user_id, name, email, dob, pw_hash, created_at, updated_at) VALUES (?,?,?,?,?,?,?)", (user_id, name, email, dob, pw, stamp, stamp))
         except sqlite3.IntegrityError:
             _log("signup_failed", user_id, "user ID or email already registered", "denied")
             raise AuthError("That user ID or email is already registered.", 409)
+        c.execute("UPDATE users SET is_admin=1 WHERE id=? AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin=1)", (cur.lastrowid,))   # the first account is the administrator
         row = c.execute("SELECT id, user_id, name FROM users WHERE id=?", (cur.lastrowid,)).fetchone()
     _log("signup_ok", user_id, "account created")
     return row
 
 
-def login(user_id, password):
+def login(user_id, password, client=""):
     uid = (user_id or "").strip()[:64]
-    key = "login:" + _sha(uid.lower())
+    key = "login:" + _sha(uid.lower() + "|" + (client or ""))     # this user ID from this address
+    ukey = "login:" + _sha(uid.lower())                           # this user ID from anywhere (a much higher bar)
     with optiondb._lock:
         c = _conn()
         _check_lock(c, key)
+        _check_lock(c, ukey)
         row = c.execute("SELECT id, user_id, name, pw_hash FROM users WHERE user_id=?", (uid,)).fetchone()
     ok = verify_password(password if isinstance(password, str) else "", row[3] if row else _dummy_hash()) and row is not None
     with optiondb._lock:
         c = _conn()
         if not ok:
             locked = _fail(c, key)
+            locked = _fail(c, ukey, LOCK_AFTER_USER) or locked
             _log("login_failed", uid, "incorrect user ID or password" + ("; locked out" if locked else ""), "denied")
             raise AuthError("Incorrect user ID or password.", 401)
         _clear(c, key)
+        _clear(c, ukey)
         stamp = datetime.datetime.fromtimestamp(now(), datetime.timezone.utc).isoformat(timespec="seconds")
         c.execute("UPDATE users SET last_login=? WHERE id=?", (stamp, row[0]))
     _log("login_ok", row[1], "signed in")
@@ -231,6 +245,8 @@ def login(user_id, password):
 
 def _verify_identity(name, email, dob):
     """Return the user row only if name, email and date of birth all match. One generic failure otherwise, and throttled."""
+    if not config.recovery_enabled():
+        raise AuthError("Online recovery is switched off on this server. The administrator can reset your password on the machine: marketlens --reset-password USERID.", 403)
     email_n = norm_email(email)[:254]
     key = "identity:" + _sha(email_n)
     with optiondb._lock:
@@ -295,6 +311,46 @@ def update_credentials(name, email, dob, new_user_id=None, new_password=None):
     return changed
 
 
+def _verify_current(c, user_pk, password, key):
+    _check_lock(c, key)
+    row = c.execute("SELECT id, user_id, email, pw_hash FROM users WHERE id=?", (user_pk,)).fetchone()
+    if not row or not verify_password(password if isinstance(password, str) else "", row[3]):
+        _fail(c, key)
+        raise AuthError("The current password is not correct.", 403, field="password")
+    _clear(c, key)
+    return row
+
+
+def change_password(user_pk, current_password, new_password):
+    """Signed-in password change: needs the current password (recovery by personal facts is not involved). Ends every other session."""
+    key = f"change:{user_pk}"
+    with optiondb._lock:
+        row = _verify_current(_conn(), user_pk, current_password, key)
+    check_password(new_password, row[1], row[2])
+    pw = hash_password(new_password)
+    with optiondb._lock:
+        c = _conn()
+        c.execute("UPDATE users SET pw_hash=?, updated_at=? WHERE id=?", (pw, datetime.datetime.fromtimestamp(now(), datetime.timezone.utc).isoformat(timespec="seconds"), user_pk))
+        c.execute("DELETE FROM sessions WHERE user_pk=?", (user_pk,))
+    _log("password_changed", row[1], "changed while signed in; all sessions ended")
+
+
+def delete_account(user_pk, password):
+    """Delete the account and its sessions after re-entering the password. The audit log keeps its (hashed, append-only) rows: they hold the user ID and event names, not personal fields."""
+    key = f"delete:{user_pk}"
+    with optiondb._lock:
+        c = _conn()
+        row = _verify_current(c, user_pk, password, key)
+        admins = c.execute("SELECT COUNT(*) FROM users WHERE is_admin=1").fetchone()[0]
+        is_admin = c.execute("SELECT is_admin FROM users WHERE id=?", (user_pk,)).fetchone()[0]
+        others = c.execute("SELECT COUNT(*) FROM users WHERE id<>?", (user_pk,)).fetchone()[0]
+        if is_admin and admins == 1 and others:
+            raise AuthError("You are the only administrator. Make another account the administrator first, or delete the other accounts.", 409)
+        c.execute("DELETE FROM sessions WHERE user_pk=?", (user_pk,))
+        c.execute("DELETE FROM users WHERE id=?", (user_pk,))
+    _log("account_deleted", row[1], "account, sessions and personal details deleted")
+
+
 # ---------- sessions ----------
 def create_session(user_pk):
     token = secrets.token_urlsafe(32)
@@ -302,7 +358,7 @@ def create_session(user_pk):
     with optiondb._lock:
         c = _conn()
         c.execute("DELETE FROM sessions WHERE expires < ?", (t,))
-        c.execute("INSERT INTO sessions (token_hash, user_pk, created, expires, last_seen) VALUES (?,?,?,?,?)", (_sha(token), user_pk, t, t + SESSION_IDLE, t))
+        c.execute("INSERT INTO sessions (token_hash, user_pk, created, expires, last_seen) VALUES (?,?,?,?,?)", (_sha(token), user_pk, t, min(t + config.session_idle(), t + SESSION_MAX), t))
     return token
 
 
@@ -312,16 +368,16 @@ def user_for_token(token):
     t = now()
     with optiondb._lock:
         c = _conn()
-        row = c.execute("SELECT s.created, s.expires, s.last_seen, u.id, u.user_id, u.name FROM sessions s JOIN users u ON u.id=s.user_pk WHERE s.token_hash=?", (_sha(token),)).fetchone()
+        row = c.execute("SELECT s.created, s.expires, s.last_seen, u.id, u.user_id, u.name, u.is_admin FROM sessions s JOIN users u ON u.id=s.user_pk WHERE s.token_hash=?", (_sha(token),)).fetchone()
         if not row:
             return None
-        created, expires, last_seen, uid, user_id, name = row
+        created, expires, last_seen, uid, user_id, name, is_admin = row
         if t > expires or t > created + SESSION_MAX:
             c.execute("DELETE FROM sessions WHERE token_hash=?", (_sha(token),))
             return None
         if t - last_seen > 60:   # slide the idle window, but write at most once a minute
-            c.execute("UPDATE sessions SET last_seen=?, expires=? WHERE token_hash=?", (t, min(created + SESSION_MAX, t + SESSION_IDLE), _sha(token)))
-    return {"pk": uid, "userId": user_id, "name": name}
+            c.execute("UPDATE sessions SET last_seen=?, expires=? WHERE token_hash=?", (t, min(created + SESSION_MAX, t + config.session_idle()), _sha(token)))
+    return {"pk": uid, "userId": user_id, "name": name, "isAdmin": bool(is_admin)}
 
 
 def end_session(token):
@@ -333,7 +389,17 @@ def end_session(token):
 # ---------- command-line administration for the machine owner ----------
 def list_users():
     with optiondb._lock:
-        return [{"userId": r[0], "name": r[1], "created": r[2], "lastLogin": r[3]} for r in _conn().execute("SELECT user_id, name, created_at, last_login FROM users ORDER BY id")]
+        return [{"userId": r[0], "name": r[1], "created": r[2], "lastLogin": r[3], "admin": bool(r[4])} for r in _conn().execute("SELECT user_id, name, created_at, last_login, is_admin FROM users ORDER BY id")]
+
+
+def set_admin(user_id, flag):
+    with optiondb._lock:
+        c = _conn()
+        row = c.execute("SELECT id FROM users WHERE user_id=?", (user_id,)).fetchone()
+        if not row:
+            raise AuthError("No such user.", 404)
+        c.execute("UPDATE users SET is_admin=? WHERE id=?", (1 if flag else 0, row[0]))
+    optiondb.safe_audit("admin_changed", user_id, f"administrator {'granted' if flag else 'removed'} from the command line", channel="cli")
 
 
 def admin_reset_password(user_id, new_password):
@@ -348,7 +414,7 @@ def admin_reset_password(user_id, new_password):
         c = _conn()
         c.execute("UPDATE users SET pw_hash=?, updated_at=? WHERE id=?", (pw, datetime.datetime.fromtimestamp(now(), datetime.timezone.utc).isoformat(timespec="seconds"), row[0]))
         c.execute("DELETE FROM sessions WHERE user_pk=?", (row[0],))
-        c.execute("DELETE FROM throttle WHERE key=?", ("login:" + _sha(row[1].lower()),))
+        c.execute("DELETE FROM throttle WHERE key LIKE 'login:%'")   # the owner is in front of the machine: clear every lock
     optiondb.safe_audit("password_reset_admin", row[1], "reset from the command line on the machine; all sessions ended", channel="cli")
 
 

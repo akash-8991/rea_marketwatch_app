@@ -28,9 +28,9 @@ Python standard library.
 | You have | Do this | Time |
 |---|---|---|
 | **An Android phone** | On the phone, tap **[Download MarketLens for Android](https://github.com/akash-8991/rea_marketwatch_app/raw/main/downloads/MarketLens-android.apk)** (a ready-built `.apk`, nothing to run), open the downloaded file, allow the install, create an account. Standalone: no computer needed. Details: [docs/MOBILE.md](docs/MOBILE.md). | 2 min |
-| **A Mac, Windows or Linux computer** | Download the zip for your system: **[macOS (Apple silicon)](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.10.4/MarketLens-macos-arm64-0.10.4.zip)**, **[Windows](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.10.4/MarketLens-windows-amd64-0.10.4.zip)** or **[Linux](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.10.4/MarketLens-linux-x86_64-0.10.4.zip)** (each has a `.sha256` checksum file next to it on the [releases page](https://github.com/akash-8991/rea_marketwatch_app/releases)), unzip, open **MarketLens**, create an account. A double-click program: no Python or terminal needed. It is not notarised, so macOS and Windows ask once before opening it. If macOS says the app is "damaged", run `xattr -dr com.apple.quarantine ~/Downloads/MarketLens.app` in Terminal (it is not damaged); details in [docs/INSTALL.md](docs/INSTALL.md). | 2 min |
+| **A Mac, Windows or Linux computer** | Download the zip for your system: **[macOS (Apple silicon)](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.11.0/MarketLens-macos-arm64-0.11.0.zip)**, **[Windows](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.11.0/MarketLens-windows-amd64-0.11.0.zip)** or **[Linux](https://github.com/akash-8991/rea_marketwatch_app/releases/download/desktop-v0.11.0/MarketLens-linux-x86_64-0.11.0.zip)** (each has a `.sha256` checksum file next to it on the [releases page](https://github.com/akash-8991/rea_marketwatch_app/releases)), unzip, open **MarketLens**, create an account. A double-click program: no Python or terminal needed. It is not notarised, so macOS and Windows ask once before opening it. If macOS says the app is "damaged", run `xattr -dr com.apple.quarantine ~/Downloads/MarketLens.app` in Terminal (it is not damaged); details in [docs/INSTALL.md](docs/INSTALL.md). | 2 min |
 | **Docker** | `docker run -d --name marketlens -p 127.0.0.1:8080:8080 -v marketlens-data:/data ghcr.io/akash-8991/rea_marketwatch_app:latest`, then open <http://127.0.0.1:8080>. Or use [docker-compose.yml](docker-compose.yml). | 1 min |
-| **Python 3.9+** | `pip install marketlens-0.10.4-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
+| **Python 3.9+** | `pip install marketlens-0.11.0-py3-none-any.whl` (from `dist/`), then `marketlens`. | 2 min |
 | **An iPhone** | Not available yet; needs a Mac with Xcode to build. See [docs/MOBILE.md](docs/MOBILE.md), section 7. | |
 
 The first screen asks you to create an account; after that you sign in with your user ID and password. You then stay signed in
@@ -58,7 +58,7 @@ happen on GitHub), [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/ARCHITECTURE.
 Requires Python 3.9 or newer (tested on 3.12, 3.13 and 3.14; 3.9-3.11 are untested).
 
 ```bash
-pip install marketlens-0.10.4-py3-none-any.whl     # or: pip install .  from a source checkout
+pip install marketlens-0.11.0-py3-none-any.whl     # or: pip install .  from a source checkout
 marketlens                                         # opens http://127.0.0.1:8080/
 marketlens-options-mcp --data-dir <data folder>    # optional: MCP (stdio) server over the option-chain database
 ```
@@ -76,6 +76,9 @@ Options:
 | `--fo-mcp-url URL` | NSE derivatives MCP endpoint for the option chain (or env `NSE_FO_MCP_URL`). |
 | `--option-inbox PATH` | Folder you drop downloaded option-chain CSVs into (default: `<data dir>/option-inbox`). |
 | `--option-interval 150` | Seconds between inbox scans and endpoint fetches (default 150 = 2.5 minutes, `0` = off). |
+| `--public-url URL`, `--allowed-host HOST`, `--trusted-proxy IP` | Behind a TLS reverse proxy: cookies get `Secure`, only that Host is accepted, and the proxy's `X-Forwarded-For` is believed for rate limits and lockouts. |
+| `--open-signup`, `--allow-recovery`, `--no-recovery`, `--session-idle-hours N` | Beyond loopback registration closes after the first (administrator) account, online recovery is off and sessions idle out after 8 hours; these flags override. |
+| `--make-admin USERID` | Make an account an administrator and exit. `--audit --audit-expect HASH` checks a previously recorded audit head. |
 | `--no-login` | Turn accounts off (no sign-in screen). Only for one trusted user on one machine. |
 | `--list-users` | Print the registered user IDs and exit. |
 | `--reset-password USERID` | Set a new password for a user (asks for it twice, hidden) and exit. For the machine's owner. |
@@ -162,10 +165,14 @@ local use.
 
 ## Privacy and security
 - Binds to `127.0.0.1` by default, sends a strict Content-Security-Policy, rejects requests whose Host or Origin is not the
-  local address (DNS-rebinding and cross-site protection), and requires a custom header for CSV uploads. There is no
-  login, so do not expose it to a network.
-- Your browser talks only to the local server. The server contacts NSE, Yahoo Finance and Google News; nothing
-  else is called and no analytics are used. Watchlist and screener settings stay in your browser's local storage.
+  local address (DNS-rebinding and cross-site protection), and requires a custom header for every state-changing request.
+  Sign-in is required (the desktop app cannot turn it off). **The first account is the administrator**; only the administrator
+  can use the Zerodha connection, the audit log, metrics and CSV import. Beyond loopback (for example the container) registration
+  closes after the first account and online recovery is off; put a TLS proxy in front and set `--public-url`. See docs/OPERATIONS.md,
+  "Who can reach the server", and [SECURITY.md](SECURITY.md).
+- Your browser talks only to the local server. The server contacts NSE, Yahoo Finance and Google News, and Zerodha (Kite Connect)
+  only if you connect it; nothing else is called and no analytics are used. Watchlist and screener settings stay in your browser's
+  local storage, per account, and are cleared when you delete the account (Settings, Account).
 
 ## Accounts and what they do and do not protect
 - **Stored in `marketlens.db`** (SQLite, file readable by the owner only): user ID, name, email, date of birth, and a

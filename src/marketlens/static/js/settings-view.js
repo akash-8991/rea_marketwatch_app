@@ -12,13 +12,18 @@ export function mount(root, { D }) {
   const S = { tab: store.get('ml.set.tab', 'appearance'), bs: null, account: null };
   const q = new URLSearchParams((location.hash.split('?')[1] || '')); if (q.get('broker')) S.tab = 'broker';
   const phone = !!window.MLEngine;
-  root.innerHTML = `<div class="grid gap-3"><div><h1 class="m-0">Settings</h1><p class="m-0 mt-1 text-sm text-muted-foreground">Appearance, trading defaults and your Zerodha connection.</p></div>${viewTabs('st-tabs', [['appearance', 'Appearance'], ['trading', 'Trading'], ['broker', 'Zerodha'], ['about', 'About']], S.tab, 'Settings sections')}<div id="st-body"></div></div>`;
+  root.innerHTML = `<div class="grid gap-3"><div><h1 class="m-0">Settings</h1><p class="m-0 mt-1 text-sm text-muted-foreground">Appearance, trading defaults and your Zerodha connection.</p></div>${viewTabs('st-tabs', [['appearance', 'Appearance'], ['trading', 'Trading'], ['broker', 'Zerodha'], ['account', 'Account'], ['about', 'About']], S.tab, 'Settings sections')}<div id="st-body"></div></div>`;
   bindViewTabs(root, 'st-tabs', (t) => { S.tab = t; store.set('ml.set.tab', t); paint(); });
 
   const appearance = () => `<section class="card"><h2>Theme</h2><div class="grid gap-2">${THEMES.map(([k, l]) => `<label class="flex items-center gap-2"><input type="radio" name="theme" value="${k}" ${currentTheme() === k ? 'checked' : ''}> <b>${esc(l)}</b></label>`).join('')}</div>
     <p class="note mt-2">Terminal is a dense amber-on-black layout in the style of a trading terminal: monospace figures, ticker tape, function-key bar (Alt + number) and command-line mnemonics in the search box (for example <code>INFY GP</code> opens the chart, <code>SIG</code> the signals, <code>ORD</code> the orders). The top-bar button cycles the three themes.</p></section>`;
   const trading = () => { const d = desk.load(); return `<section class="card"><h2>Trading</h2><div class="desk-kpis">${kpi('Mode', esc(C.MODES.find((m) => m[0] === d.mode)[1]), '<a href="#/ops">change on the Operator page</a>')}${kpi('Fusion weights', esc(d.fusion.version), '<a href="#/signals">edit on the Signals page</a>')}${kpi('Max order value', `₹${d.limits.maxOrderValue.toLocaleString('en-IN')}`, '<a href="#/orders">edit risk limits</a>')}${kpi('Kill switch', d.kill.global ? '<span class="down">ON</span>' : 'off')}</div>
     <p class="note">Nothing here can switch live trading on. Live orders need the server to be started with <code>--enable-live-orders</code>, a connected Zerodha session, every pre-live checklist item ticked and live mode chosen on the Operator page, with a confirmation.</p></section>`; };
+  const account = () => `<section class="card"><h2>Your account</h2><p class="m-0">Signed in as <strong>${esc((window.MLUser && window.MLUser.name) || '')}</strong>${window.MLUser && window.MLUser.isAdmin ? ' (administrator)' : ''}.</p>
+    <h3>Change password</h3><form id="pw-form" class="grid gap-2" autocomplete="off"><label>Current password<input type="password" id="pw-cur" autocomplete="current-password" required></label><label>New password (10 or more characters)<input type="password" id="pw-new" autocomplete="new-password" required minlength="10"></label><button class="btn" type="submit">Change password</button></form>
+    <p class="note">Changing it signs you out everywhere.</p>
+    <h3>Delete my account</h3><p class="m-0">Removes your account, your name, email and date of birth, and signs you out. Watchlists and paper trades kept in this browser for this account are cleared too. This cannot be undone.</p>
+    <form id="del-form" class="grid gap-2" autocomplete="off"><label>Password<input type="password" id="del-pw" autocomplete="current-password" required></label><button class="btn danger" type="submit">Delete my account</button></form></section>`;
   const about = () => `<section class="card"><h2>About</h2><p class="m-0">MarketLens ${esc(window.MLVersion || '')}: a local NSE markets dashboard with paper trading, chart and fundamental analysis, signals, a risk engine and an optional Zerodha connection. Data is for learning and research.</p><p class="note">Order, trade and audit records live in this browser or app (per signed-in user); export the audit log from the Operator page.</p></section>`;
   const broker = () => {
     if (phone) return `<section class="card"><h2>Zerodha</h2>${alert({ variant: 'default', title: 'Desktop app only', text: 'Kite Connect needs a whitelisted static IP to place orders and keeps your API secret on a machine you control, so the connection is part of the desktop app (the pip package or the container). Paper and shadow trading work on the phone.' })}</section>`;
@@ -42,8 +47,20 @@ export function mount(root, { D }) {
     } catch (e) { box.innerHTML = `<span class="down">${esc(e.message)}</span>`; }
   }
   function paint(reload = true) {
-    const b = $('#st-body', root); b.innerHTML = { appearance, trading, broker, about }[S.tab]();
+    const b = $('#st-body', root); b.innerHTML = { appearance, trading, broker, account, about }[S.tab]();
     $$('[name=theme]', b).forEach((r) => r.addEventListener('change', () => applyTheme(r.value)));
+    const authPost = (path, body) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'MarketLens' }, body: JSON.stringify(body), retries: 0 });
+    const toSignIn = () => { location.hash = ''; location.replace(location.pathname + location.search); };
+    $('#pw-form', b)?.addEventListener('submit', async (e) => { e.preventDefault(); try { await authPost('/api/auth/change-password', { currentPassword: $('#pw-cur', b).value, newPassword: $('#pw-new', b).value }); toast.success('Password changed', 'Sign in again.'); setTimeout(toSignIn, 800); } catch (err) { toast.error('Not changed', err.message); } });
+    $('#del-form', b)?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!(await confirmDialog({ title: 'Delete your account?', text: 'Your account and personal details are removed and this cannot be undone.', confirmLabel: 'Delete', danger: true }))) return;
+      try {
+        const me = store.user; await authPost('/api/auth/delete-account', { password: $('#del-pw', b).value });
+        store.clearUser(me);
+        toast.success('Account deleted', ''); setTimeout(toSignIn, 800);
+      } catch (err) { toast.error('Not deleted', err.message); }
+    });
     if (S.tab === 'broker' && !phone) {
       if (reload && !S.bs) loadBroker();
       $('#zk-save', b)?.addEventListener('click', async () => { try { S.bs = await desk.post('/api/broker/credentials', { apiKey: $('#zk-key', b).value.trim(), apiSecret: $('#zk-secret', b).value.trim() }); toast.success('Saved', 'Now sign in at Zerodha.'); paint(false); } catch (e) { toast.error('Not saved', e.message); } });

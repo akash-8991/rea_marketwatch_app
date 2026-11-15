@@ -33,6 +33,7 @@ export const store = {
   user: null,   // set once after sign-in so each account keeps its own watchlist, saved screens and filters in this browser
   get(k, d) { try { return JSON.parse(localStorage.getItem(scoped(k))) ?? d; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(scoped(k), JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
+  clearUser(u) { if (!u) return; try { Object.keys(localStorage).filter((k) => k.endsWith('@' + u)).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* storage unavailable */ } },   // after the account is deleted
 };
 
 /* ---------- API client: timeout, bounded retries with backoff + jitter (GET only), connection tracking ---------- */

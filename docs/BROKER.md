@@ -35,6 +35,9 @@ Zerodha's own rules still apply and cannot be handled by software: API order pla
 
 **Not verified against Zerodha's servers.** The tests use a fake Kite (login checksum, state, token expiry, gates, status mapping, idempotency, kill switch). Treat the first live order as a test: tiny quantity, Manual approval mode, Zerodha chosen as the broker on the Operator page.
 
+## Server-side limits (the gate in `broker.py`)
+Besides the per-order value cap and five orders a second, the gate caps **orders per India day** (default 50, `max_daily_orders`) and **order value per day** (default Rs 5,00,000, `max_daily_value`), and can restrict trading to an **allow-list of symbols** (`allowed_symbols`: a list in `broker.json`). The ledger of sent tags and the day's totals is kept in the database, so a restart cannot send the same tag again or reset the day. A definite refusal by Kite gives its tag and allowance back; an unknown outcome keeps both. Non-finite prices are refused. Only the **administrator** can reach any broker endpoint (see OPERATIONS.md, "Who can reach the server"); other users see only whether the connection is up. An expired access token is removed from `broker.json`.
+
 ## Endpoints
 
 `GET /api/broker/status` (never contains the secret or token), `GET /api/broker/login-url`, `GET /api/broker/account`, `GET /api/broker/order/<id>` and `GET /api/broker/order?tag=`, `POST /api/broker/credentials | session | order | cancel | logout | forget | kill` (all POSTs need the `X-Requested-With: MarketLens` header and JSON), `GET /broker/callback` (the redirect target). Rate class `broker`: 30 burst, 5 a second. Broker events (credentials saved or removed, login, logout, orders, cancels, refusals, kill switch) go to the audit log without secrets.

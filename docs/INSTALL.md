@@ -8,11 +8,11 @@ web app you open in your browser; it needs Python and nothing else (no database 
 
 A program for macOS, Windows and Linux that starts the server and opens its own window: no Python, no terminal, no browser setup. Download the zip for your system from the **desktop-v...** release on GitHub and its checksum file, unzip, and start it:
 
-* **macOS**: unzip (double-click the zip in Finder) and open `MarketLens.app`. **If macOS says "MarketLens is damaged and can't be opened", the app is not damaged**: it is not notarised by Apple, and macOS flags files downloaded from the internet. Remove the flag once in Terminal, then open it normally: `xattr -dr com.apple.quarantine ~/Downloads/MarketLens.app` (use the folder you unzipped into). From 0.10.4 the app is sealed with an ad-hoc signature, so macOS shows the milder "unidentified developer" prompt instead; if you see that, right-click the app, choose *Open*, then *Open* again (or System Settings, Privacy and Security, *Open Anyway*). Use the zip from the GitHub release, not a copy re-zipped by another tool. The program is not code-signed or notarised, so macOS asks once: right-click the app, choose *Open*, then *Open* again (or run `xattr -dr com.apple.quarantine MarketLens.app`).
+* **macOS**: unzip (double-click the zip in Finder) and open `MarketLens.app`. **If macOS says "MarketLens is damaged and can't be opened", the app is not damaged**: it is not notarised by Apple, and macOS flags files downloaded from the internet. Remove the flag once in Terminal, then open it normally: `xattr -dr com.apple.quarantine ~/Downloads/MarketLens.app` (use the folder you unzipped into). From 0.11.0 the app is sealed with an ad-hoc signature, so macOS shows the milder "unidentified developer" prompt instead; if you see that, right-click the app, choose *Open*, then *Open* again (or System Settings, Privacy and Security, *Open Anyway*). Use the zip from the GitHub release, not a copy re-zipped by another tool. The program is not code-signed or notarised, so macOS asks once: right-click the app, choose *Open*, then *Open* again (or run `xattr -dr com.apple.quarantine MarketLens.app`).
 * **Windows**: open `MarketLens\MarketLens.exe`. SmartScreen warns about an unknown publisher: *More info*, then *Run anyway*.
 * **Linux**: run `MarketLens/MarketLens`.
 
-**Troubleshooting: "no answer from NSE" and screens that never change.** Before 0.10.4 the packaged app (and a `pip` install on a Python without a certificate store, such as python.org builds on macOS) could not verify HTTPS certificates, so every request to NSE, Yahoo, Google and Zerodha failed. From 0.10.4 the app uses the certifi certificate bundle, the error now says when the cause is a certificate check, and the package self-test (`--check`) fails if HTTPS verification does not work. If you still see it, check that the computer can reach `mcp.nseindia.in` (VPN, firewall or a company proxy that replaces certificates: set `SSL_CERT_FILE` to your proxy's CA file), and update to the latest desktop release. Pip users: `pip install certifi`.
+**Troubleshooting: "no answer from NSE" and screens that never change.** Before 0.11.0 the packaged app (and a `pip` install on a Python without a certificate store, such as python.org builds on macOS) could not verify HTTPS certificates, so every request to NSE, Yahoo, Google and Zerodha failed. From 0.11.0 the app uses the certifi certificate bundle, the error now says when the cause is a certificate check, and the package self-test (`--check`) fails if HTTPS verification does not work. If you still see it, check that the computer can reach `mcp.nseindia.in` (VPN, firewall or a company proxy that replaces certificates: set `SSL_CERT_FILE` to your proxy's CA file), and update to the latest desktop release. Pip users: `pip install certifi`.
 
 **Sign-in is always required.** The first time you create an account (name, email, date of birth, user ID, password); afterwards you sign in with the user ID and password and stay signed in, even after closing the app, until you sign out, but never longer than 15 days. The forgot-user-ID and change-credentials flows are the phone app's. There is no way to switch sign-in off in the desktop app (`--no-login` exists only on the `marketlens` command). Accounts and data live in your user data folder (`~/Library/Application Support/MarketLens`, `%APPDATA%\\MarketLens`, `~/.local/share/MarketLens`) and survive updates. Accounts are per device: the phone and the desktop keep their own.
 
@@ -30,13 +30,13 @@ Check Python: `python3 --version` (on Windows: `py --version`).
 ## 2. Install
 
 ### Option A: from the release package (recommended)
-Download `marketlens-0.10.4-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
+Download `marketlens-0.11.0-py3-none-any.whl` and `SHA256SUMS.txt` from the `dist/` folder of this repository, then:
 
 ```bash
 shasum -a 256 -c SHA256SUMS.txt          # macOS/Linux: checks both files; "OK" for the one you downloaded
 python3 -m venv ~/marketlens-env         # a private environment keeps it separate from other Python tools
 source ~/marketlens-env/bin/activate     # Windows: %USERPROFILE%\marketlens-env\Scripts\activate
-pip install marketlens-0.10.4-py3-none-any.whl
+pip install marketlens-0.11.0-py3-none-any.whl
 marketlens
 ```
 (`shasum -c` reports "FAILED open or read" for a file you did not download; that is expected.)
@@ -72,6 +72,7 @@ or `docker compose up -d` with the repository's `docker-compose.yml` (read-only 
 - **Data** lives in the `marketlens-data` volume (`/data`: accounts, option snapshots, audit log, cached prices).
 - **Option-chain CSVs**: use the Import button, or mount a folder: `-v "$PWD/option-inbox:/data/option-inbox"`
   (the container user is UID 10001, so make the folder writable by it).
+- **Exposing the container beyond your own computer** (not recommended): the image binds `0.0.0.0` inside the container, so after the first (administrator) account registration closes and online recovery is off. Put a TLS reverse proxy in front, publish the port to the proxy only, and add `--public-url https://your.host --trusted-proxy <proxy IP>`. Never enable `--enable-live-orders` for a server other people can reach. See OPERATIONS.md, "Who can reach the server".
 - **Flags**: append them to `docker run`, e.g. `... :latest --offline`. Environment: `NSE_FO_MCP_URL` and friends.
 - **Tags**: `latest` follows `main`; `1.2.3` and `1.2` follow version tags; pin one for repeatable installs.
 - **Upgrade**: `docker pull ghcr.io/akash-8991/rea_marketwatch_app:latest && docker rm -f marketlens` and run again; the
@@ -162,6 +163,8 @@ password (the audit chain stayed intact). With Docker, the `/data` volume does t
 - **Uninstall**: `pip uninstall marketlens`, then delete the data folder if you also want your accounts and data gone.
 
 ## 8. Forgotten credentials
+(Online recovery by name, email and date of birth works only on loopback; beyond it the owner runs `marketlens --reset-password USERID` on the machine, or `docker exec -it marketlens marketlens --reset-password USERID`.)
+
 On the sign-in screen use **Forgot user ID?** or **Forgot or change password / user ID** (name, email and date of birth
 must all match). If you cannot, whoever runs the machine can run `marketlens --reset-password USERID` (asks for the new
 password twice). `marketlens --list-users` shows who is registered.

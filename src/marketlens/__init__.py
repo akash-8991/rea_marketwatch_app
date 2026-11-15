@@ -1,2 +1,2 @@
 """MarketLens: a local NSE markets dashboard."""
-__version__ = "0.10.4"
+__version__ = "0.11.0"

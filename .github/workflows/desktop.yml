@@ -24,8 +24,8 @@ jobs:
         os: [macos-latest, windows-2022, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with: { python-version: '3.12' }
       - name: Tests (Python)
         if: matrix.os == 'ubuntu-24.04'
@@ -34,7 +34,7 @@ jobs:
         run: python -m pip install . pyinstaller certifi
       - name: Build, self-test (sign up, sign in, sign out) and zip
         run: python packaging/build_desktop.py
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: marketlens-desktop-${{ matrix.os }}
           path: |
@@ -47,12 +47,19 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write       # for the build-provenance attestation
+      attestations: write
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           pattern: marketlens-desktop-*
           merge-multiple: true
           path: out
+      - name: Attest where and how the zips were built (verify with gh attestation verify)
+        continue-on-error: true
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: out/*.zip
       - name: Create the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

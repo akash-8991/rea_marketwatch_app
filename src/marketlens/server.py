@@ -23,6 +23,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import broker, accounts, analysis, market, marketclock, news, nse, optiondb, options, ratelimit, scheduler, securities, store
+from . import config
 from .config import settings
 from .metrics import metrics
 
@@ -32,7 +33,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
 MAX_UPLOAD = optiondb.MAX_CSV_BYTES
 LOOPBACK = ("127.0.0.1", "localhost", "::1", "[::1]")
 RID_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
-KNOWN_ROUTES = {"/api/broker/status", "/api/broker/login-url", "/api/broker/account", "/api/broker/credentials", "/api/broker/session", "/api/broker/order", "/api/broker/cancel", "/api/broker/logout", "/api/broker/forget", "/api/broker/kill", "/healthz", "/readyz", "/api/config", "/api/bootstrap", "/api/live", "/api/listings", "/api/extras", "/api/sentiment", "/api/search", "/api/options",
+KNOWN_ROUTES = {"/api/auth/change-password", "/api/auth/delete-account", "/api/broker/status", "/api/broker/login-url", "/api/broker/account", "/api/broker/credentials", "/api/broker/session", "/api/broker/order", "/api/broker/cancel", "/api/broker/logout", "/api/broker/forget", "/api/broker/kill", "/healthz", "/readyz", "/api/config", "/api/bootstrap", "/api/live", "/api/listings", "/api/extras", "/api/sentiment", "/api/search", "/api/options",
                 "/api/options/meta", "/api/options/import", "/api/audit", "/api/metrics", "/api/vitals",
                 "/api/auth/status", "/api/auth/me", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/forgot-user-id", "/api/auth/update-credentials"}
 PUBLIC_API = {"/api/auth/status", "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/forgot-user-id", "/api/auth/update-credentials"}
@@ -187,6 +188,16 @@ def classify(method, path):
     return "read" if path.startswith("/api/") else "static"
 
 
+def _upstream_message(e):
+    """What the browser is told when a data source fails: the short reason for the failures the app itself words (NSE unreachable, blocked, certificate check, offline), a fixed text for anything else
+    so file paths, URLs and library internals never reach the page. The detail is in the server log."""
+    msg = str(e)
+    if isinstance(e, (nse.UpstreamBlocked, RuntimeError)) and len(msg) <= 240 and not re.search(r"(?<!\w)[/~][\w.~-]+/|[A-Za-z]:\\|\\\\|https?:|Traceback", msg):   # a file path (/dir/x, ~/x, C:\x), a URL or a traceback is never shown
+        return msg
+    sys.stderr.write(json.dumps({"level": "warn", "msg": "upstream_error", "error": e.__class__.__name__, "detail": msg[:200]}) + "\n")
+    return "the data source did not answer; try again shortly"
+
+
 def _clean_filename(name):
     name = os.path.basename(urllib.parse.unquote(name or ""))
     return re.sub(r"[^A-Za-z0-9._ -]", "_", name)[:120]
@@ -283,6 +294,18 @@ class Handler(BaseHTTPRequestHandler):
     def _guard(self):
         """Block DNS-rebinding and cross-site requests: only our own loopback origin may call the server."""
         if settings.host not in LOOPBACK:
+            allowed = {h.lower() for h in settings.allowed_hosts}
+            if settings.public_url:
+                allowed.add(urllib.parse.urlparse(settings.public_url).netloc.lower())
+            if not allowed:
+                return True    # no host list configured: nothing to compare against (the start-up message says to set --public-url or --allowed-host)
+            if (self.headers.get("Host") or "").lower() not in allowed:
+                self._error(403, "forbidden host")
+                return False
+            origin = self.headers.get("Origin")
+            if origin and urllib.parse.urlparse(origin).netloc.lower() not in allowed:
+                self._error(403, "forbidden origin")
+                return False
             return True
         port = self.server.server_address[1]
         hosts = {f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"}
@@ -295,10 +318,32 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def _client_ip(self):
+        """The address rate limits and lockouts are keyed on: the TCP peer, or, only when that peer is a configured trusted proxy, the address that proxy appended to X-Forwarded-For."""
+        peer = self.client_address[0]
+        if peer in settings.trusted_proxies:
+            fwd = [x.strip() for x in (self.headers.get("X-Forwarded-For") or "").split(",") if x.strip()]
+            if fwd:
+                return fwd[-1][:64]
+        return peer
+
+    def _https(self):
+        """Is the browser talking to us over TLS (through a proxy we trust, or because the public URL says so)?"""
+        if settings.public_url.lower().startswith("https://"):
+            return True
+        return self.client_address[0] in settings.trusted_proxies and (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
+
+    def _admin_only(self):
+        """True if the caller may use an administrator route. With accounts off (--no-login) the machine owner is the only user; otherwise the signed-in user must be the administrator."""
+        if not settings.require_login or (self.user and self.user.get("isAdmin")):
+            return True
+        self._error(403, "administrator only")
+        return False
+
     def _limited(self, cls):
         """Apply the token bucket for this client and class; True when the request may proceed."""
         try:
-            ok, retry = _limiter.allow(self.client_address[0], cls)
+            ok, retry = _limiter.allow(self._client_ip(), cls)
         except Exception as e:  # a limiter bug must not take the app down: fail open, but say so
             self._log("error", "rate_limiter_failed", error=e.__class__.__name__)
             return True
@@ -397,9 +442,8 @@ class Handler(BaseHTTPRequestHandler):
             self._log("error", "session_lookup_failed", error=e.__class__.__name__)
             return None
 
-    @staticmethod
-    def _cookie(token):
-        return f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={accounts.SESSION_IDLE if token else 0}"
+    def _cookie(self, token):
+        return f"{COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={config.session_idle() if token else 0}" + ("; Secure" if self._https() else "")
 
     def _auth_post(self, path):
         if self.headers.get("X-Requested-With") != "MarketLens":
@@ -426,11 +470,17 @@ class Handler(BaseHTTPRequestHandler):
                 row = accounts.signup(g("name"), g("email"), g("dob", 20), g("userId", 40), g("password", 128))
                 return self._json({"user": {"uid": row[0], "userId": row[1], "name": row[2]}}, 201, {"Set-Cookie": self._cookie(accounts.create_session(row[0]))})
             if path == "/api/auth/login":
-                row = accounts.login(g("userId", 64), g("password", 256))
+                row = accounts.login(g("userId", 64), g("password", 256), self._client_ip())
                 return self._json({"user": {"uid": row[0], "userId": row[1], "name": row[2]}}, 200, {"Set-Cookie": self._cookie(accounts.create_session(row[0]))})
             if path == "/api/auth/logout":
                 accounts.end_session(self._token())
                 return self._json({"ok": True}, 200, {"Set-Cookie": self._cookie("")})
+            if path == "/api/auth/change-password":
+                accounts.change_password(self.user["pk"], g("currentPassword", 256), g("newPassword", 128))
+                return self._json({"changed": True}, 200, {"Set-Cookie": self._cookie("")})   # every session ended: sign in again
+            if path == "/api/auth/delete-account":
+                accounts.delete_account(self.user["pk"], g("password", 256))
+                return self._json({"deleted": True}, 200, {"Set-Cookie": self._cookie("")})
             if path == "/api/auth/forgot-user-id":
                 return self._json({"userId": accounts.forgot_user_id(g("name"), g("email"), g("dob", 20))})
             if path == "/api/auth/update-credentials":
@@ -506,16 +556,16 @@ class Handler(BaseHTTPRequestHandler):
         qs = urllib.parse.parse_qs(u.query)
         try:
             return self._api_get(path, qs)
-        except nse.UpstreamBlocked as e:
-            return self._error(502, str(e)[:300])
         except Exception as e:  # upstream failure: report it, never crash the server
-            return self._error(502, str(e)[:300])
+            return self._error(502, _upstream_message(e))
 
     def _broker_callback(self, u):
         """Zerodha sends the browser back here with ?request_token=...&status=success&state=... after you sign in on their page."""
         qs = urllib.parse.parse_qs(u.query)
         if settings.require_login and not self.user:
             return self._error(401, "Sign in to MarketLens first, then connect Zerodha again.")
+        if not self._admin_only():
+            return
         ok, msg = False, "failed"
         if qs.get("status", [""])[0] != "success":
             msg = "Zerodha reported that the login did not complete."
@@ -541,9 +591,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def _api_get(self, p, qs):
         if p == "/api/auth/status":
-            return self._json({"loginRequired": settings.require_login, "usersExist": accounts.user_count() > 0, "signedIn": bool(self.user)})
+            n = accounts.user_count()
+            return self._json({"loginRequired": settings.require_login, "usersExist": n > 0, "signedIn": bool(self.user), "recoveryEnabled": config.recovery_enabled(), "signupOpen": config.signup_open(n > 0)})
         if p == "/api/auth/me":
-            return self._json({"user": {"uid": self.user["pk"], "userId": self.user["userId"], "name": self.user["name"]}}) if self.user else self._error(401, "not signed in")
+            return self._json({"user": {"uid": self.user["pk"], "userId": self.user["userId"], "name": self.user["name"], "isAdmin": bool(self.user.get("isAdmin"))}}) if self.user else self._error(401, "not signed in")
         if p == "/api/config":
             return self._json(config_payload())
         if p == "/api/bootstrap":
@@ -566,24 +617,36 @@ class Handler(BaseHTTPRequestHandler):
             sym = urllib.parse.unquote(m.group(1)).upper()
             return self._json(market.quote(sym, fresh=bool(qs.get("fresh")))) if market.SYMBOL_RE.match(sym) else self._error(400, "bad symbol")
         if p == "/api/broker/status":
-            return self._json(broker.status())
+            st = broker.status()
+            if settings.require_login and not (self.user and self.user.get("isAdmin")):   # everyone may see whether the connection is up; the account details are the administrator's
+                st = {k: st[k] for k in ("connected", "liveOrdersEnabled", "killSwitch", "marketData") if k in st}
+                st["restricted"] = True
+            return self._json(st)
         if p == "/api/broker/login-url":
+            if not self._admin_only():
+                return
             try:
                 return self._json(broker.login_url())
             except broker.BrokerError as e:
                 return self._error(e.status, str(e))
         if p == "/api/broker/account":
+            if not self._admin_only():
+                return
             try:
                 return self._json(broker.account())
             except broker.BrokerError as e:
                 return self._error(e.status, str(e))
         m = re.match(r"^/api/broker/order/([0-9A-Za-z]{1,30})$", p)
+        if m and not self._admin_only():
+            return
         if m:
             try:
                 return self._json(broker.order_status(order_id=m.group(1)) or {"status": None})
             except broker.BrokerError as e:
                 return self._error(e.status, str(e))
         if p == "/api/broker/order":   # lookup by tag (the order id is unknown after a timeout)
+            if not self._admin_only():
+                return
             try:
                 return self._json(broker.order_status(tag=qs.get("tag", [""])[0]) or {"status": None})
             except broker.BrokerError as e:
@@ -629,10 +692,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error(400, "bad symbol")
             return self._json(news.stock_news(sym))
         if p == "/api/options/meta":
-            return self._json({"symbols": optiondb.symbols(), "scheduler": scheduler.status(), "snapshots": optiondb.snapshots(limit=10), "dbPath": optiondb.db_path()})
+            meta = {"symbols": optiondb.symbols(), "scheduler": scheduler.status(), "snapshots": optiondb.snapshots(limit=10)}
+            if not settings.require_login or (self.user and self.user.get("isAdmin")):
+                meta["dbPath"] = optiondb.db_path()    # the server's file path is for the administrator only
+            return self._json(meta)
         if p == "/api/audit":
+            if not self._admin_only():
+                return
             return self._json({"entries": optiondb.audit_log(qs.get("limit", ["30"])[0]), "verify": optiondb.verify_audit()})
         if p == "/api/metrics":
+            if not self._admin_only():
+                return
             return self._json(metrics_payload())
         if p == "/api/options":
             sym = qs.get("symbol", ["NIFTY"])[0]
@@ -666,11 +736,13 @@ class Handler(BaseHTTPRequestHandler):
         if settings.require_login and not self.user:
             return self._error(401, "authentication required")
         if u.path.startswith("/api/broker/"):
-            return self._broker_post(u.path)
+            return self._broker_post(u.path) if self._admin_only() else None
         if u.path == "/api/vitals":
             return self._vitals()
         if u.path != "/api/options/import":
             return self._error(404, "not found")
+        if not self._admin_only():
+            return
         if self.headers.get("X-Requested-With") != "MarketLens":
             return self._error(403, "missing X-Requested-With header")
         if self.headers.get("Content-Type", "").split(";")[0].strip().lower() not in ("text/csv", "text/plain", "application/octet-stream"):

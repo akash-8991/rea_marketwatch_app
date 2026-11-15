@@ -57,9 +57,10 @@ export function mountAuth(root, status) {
       <form id="auth-form" novalidate>${V.fields()}<button class="btn on wide" type="submit">${esc(V.submit)}</button></form>
       <nav class="auth-links" aria-label="Account options">
         ${view !== 'signin' ? '<button type="button" class="link" data-go="signin">Sign in</button>' : ''}
-        ${view !== 'signup' ? '<button type="button" class="link" data-go="signup">Create an account</button>' : ''}
-        ${view !== 'forgotId' ? '<button type="button" class="link" data-go="forgotId">Forgot user ID?</button>' : ''}
-        ${view !== 'update' ? '<button type="button" class="link" data-go="update">Forgot or change password / user ID</button>' : ''}
+        ${view !== 'signup' && status.signupOpen !== false ? '<button type="button" class="link" data-go="signup">Create an account</button>' : ''}
+        ${view !== 'forgotId' && status.recoveryEnabled !== false ? '<button type="button" class="link" data-go="forgotId">Forgot user ID?</button>' : ''}
+        ${view !== 'update' && status.recoveryEnabled !== false ? '<button type="button" class="link" data-go="update">Forgot or change password / user ID</button>' : ''}
+        ${status.recoveryEnabled === false ? '<p class="muted">Forgot your password? The administrator can reset it on the machine running MarketLens.</p>' : ''}
       </nav></section>`;
     $('#auth-form input')?.focus();
   };

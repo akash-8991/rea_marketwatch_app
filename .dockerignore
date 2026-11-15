@@ -10,3 +10,8 @@ tests
 *.db
 *.db-*
 breaker.json
+security-audit
+.env
+*.pem
+*.keystore
+*.jks

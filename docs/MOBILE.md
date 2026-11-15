@@ -6,6 +6,11 @@ the same web interface as the desktop version, running on a JavaScript copy of t
 **Status: Android only.** iPhone is not built yet (see section 7). **The app has not been run on a real phone.** What
 has been checked is listed in section 8; please report anything that breaks.
 
+## Security notes (from the pre-production audit)
+* The APK is a **release build** (not debuggable); the workflow fails if `aapt2 dump badging` shows `application-debuggable`. It is signed with the key in the `MARKETLENS_DEBUG_KEYSTORE` secret (the same key as earlier builds so phones update in place; optional secrets `MARKETLENS_KEYSTORE_PASSWORD`, `MARKETLENS_KEY_ALIAS`, `MARKETLENS_KEY_PASSWORD` replace the default debug-key values). Without the secret a one-off key is generated and an install over an older build needs an uninstall first. Rotating to a new key has the same consequence: plan it with a release note.
+* The page carries a Content-Security-Policy (`script-src 'self'`, data only over HTTPS), added by `mobile/scripts/build-www.mjs`. Not exercised on a physical device in this release: install the next build and check that the app starts and loads data.
+* Settings, Account lets you change the password (needs the current one) and delete the account on the phone.
+
 ## 1. Install on Android (sideloading)
 Android 7.0 or newer.
 

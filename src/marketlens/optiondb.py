@@ -73,6 +73,11 @@ def _db():
             c.execute("PRAGMA journal_mode=WAL")
             c.execute("PRAGMA foreign_keys=ON")
             c.executescript(SCHEMA)
+            for suffix in ("-wal", "-shm"):   # the write-ahead files hold recent rows (accounts included): same owner-only mode as the database
+                try:
+                    os.chmod(path + suffix, 0o600)
+                except OSError:
+                    pass
             _migrate(c)
             _state["conn"], _state["path"] = c, path
         return _state["conn"]
@@ -142,18 +147,22 @@ def audit_log(limit=50):
     return [dict(zip(("id", "ts", "event", "actor", "symbol", "snapshotId", "detail", "sha256", "schemaVer", "uid", "outcome", "requestId", "channel"), r)) for r in rows]
 
 
-def verify_audit():
-    """Recompute the hash chain. A broken chain means rows were edited or removed outside the app."""
+def verify_audit(expect=None):
+    """Recompute the hash chain. A broken chain means rows were edited or removed outside the app. The chain is not keyed, so someone who can rewrite the whole database can rebuild it:
+    record `head` somewhere else (paper, another machine) from time to time and pass it back as `expect`; a head that is no longer part of the chain means the history was rewritten."""
     with _lock:
         rows = _db().execute("SELECT id, ts, event, actor, symbol, snapshot_id, detail, sha256, prev_hash, entry_hash, schema_ver, uid, outcome, request_id, channel FROM audit_log ORDER BY id").fetchall()
-    prev = "0" * 64
+    prev, seen = "0" * 64, set()
     for r in rows:
         id_, ts, event, actor, symbol, snap, detail, sha, p, h, ver, uid, outcome, rid, channel = r
         v2 = (uid, outcome, rid, channel) if ver and ver >= 2 else None
         if p != prev or _entry_hash(p, ts, event, actor, symbol, snap, detail, sha, v2) != h:
             return {"ok": False, "entries": len(rows), "firstBadId": id_}
         prev = h
-    return {"ok": True, "entries": len(rows), "firstBadId": None}
+        seen.add(h)
+    if expect and expect not in seen:
+        return {"ok": False, "entries": len(rows), "firstBadId": None, "anchorMissing": True, "head": prev}
+    return {"ok": True, "entries": len(rows), "firstBadId": None, "head": prev}
 
 
 # ---------- CSV parsing (layout of NSE's option-chain download: CALLS | STRIKE | PUTS) ----------

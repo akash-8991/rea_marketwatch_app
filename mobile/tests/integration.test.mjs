@@ -233,3 +233,19 @@ test('sector classification follows the current list even for data saved by an o
   const s = (await e.handle('GET', '/api/bootstrap')).body.stocks;
   assert.deepEqual(s.map((x) => x.sector), ['Information Technology', 'Oil Gas & Consumable Fuels', 'Other']);
 });
+
+test('signed-in password change needs the current password and ends sessions; account deletion removes the account', async () => {
+  const e = make(fakeNet());
+  const t = await signedIn(e);
+  assert.equal((await post(e, '/api/auth/change-password', { currentPassword: 'wrong-wrong-1', newPassword: 'lotus-river-91q' }, t)).status, 403);
+  assert.equal((await post(e, '/api/auth/change-password', { currentPassword: ACCT.password, newPassword: 'lotus-river-91q' })).status, 401);   // needs a session
+  assert.equal((await post(e, '/api/auth/change-password', { currentPassword: ACCT.password, newPassword: 'lotus-river-91q' }, t)).status, 200);
+  assert.equal((await get(e, '/api/auth/me', t)).status, 401);
+  const r = await post(e, '/api/auth/login', { userId: 'asha.rao', password: 'lotus-river-91q' });
+  assert.equal(r.status, 200);
+  const t2 = r.setToken;
+  assert.equal((await post(e, '/api/auth/delete-account', { password: 'wrong-wrong-1' }, t2)).status, 403);
+  assert.equal((await post(e, '/api/auth/delete-account', { password: 'lotus-river-91q' }, t2)).status, 200);
+  assert.equal((await post(e, '/api/auth/login', { userId: 'asha.rao', password: 'lotus-river-91q' })).status, 401);
+  assert.equal((await get(e, '/api/auth/status')).body.usersExist, false);
+});

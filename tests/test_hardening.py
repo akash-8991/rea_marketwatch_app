@@ -366,7 +366,7 @@ class AuditMigrationAndCoupling(unittest.TestCase):
         cols = {r[1] for r in optiondb._db().execute("PRAGMA table_info(audit_log)")}
         self.assertTrue({"schema_ver", "uid", "outcome", "request_id", "channel"} <= cols)
         self.assertEqual([e["schemaVer"] for e in reversed(optiondb.audit_log(10))], [1, 1, 2])
-        self.assertEqual(optiondb.verify_audit(), {"ok": True, "entries": 3, "firstBadId": None})
+        self.assertEqual({k: v for k, v in optiondb.verify_audit().items() if k != "head"}, {"ok": True, "entries": 3, "firstBadId": None})
         optiondb.close(); optiondb.audit("note", "test", "after reopening")      # migration is idempotent
         self.assertTrue(optiondb.verify_audit()["ok"])
 

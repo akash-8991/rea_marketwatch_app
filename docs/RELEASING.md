@@ -25,9 +25,9 @@ against the Python engine's output (`android.yml`). Pull requests run tests and 
 # 1. bump versions (mobile/package.json is the Android version): pyproject.toml + src/marketlens/__init__.py (desktop), mobile/package.json (Android), update docs
 #    bundled stock list changed? run mobile/scripts/gen-sectors.py (a test fails if the phone's copy differs); apps also refresh it weekly by themselves
 # 2. make sure main is green (Actions tab), then:
-git tag v0.10.4        && git push origin v0.10.4          # container image :0.10.4 and :0.10
-git tag mobile-v0.13.2 && git push origin mobile-v0.13.2   # Android APK as a GitHub Release
-git tag desktop-v0.10.4 && git push origin desktop-v0.10.4   # desktop app zips for macOS, Windows and Linux as a GitHub Release (workflow "Desktop app")
+git tag v0.11.0        && git push origin v0.11.0          # container image :0.11.0 and :0.11
+git tag mobile-v0.14.0 && git push origin mobile-v0.14.0   # Android APK as a GitHub Release
+git tag desktop-v0.11.0 && git push origin desktop-v0.11.0   # desktop app zips for macOS, Windows and Linux as a GitHub Release (workflow "Desktop app")
 ```
 After a desktop release, update the three download links in the README "Get the app" table (they name the release tag and the version in the zip file names).
 The Android version code is the workflow run number, so each build can update the previous one if signed with the same key.
@@ -64,3 +64,10 @@ CI runs the same build and fails if the committed files differ. Then rebuild the
 ## Rolling back
 Container: pin the previous tag. Android: delete the faulty Release (users keep what they installed) and publish a fixed
 tag with a higher run number. Nothing in the app auto-updates; users choose when to install a newer build.
+
+## Pipeline hardening (security audit)
+* Third-party actions are pinned to full commit SHAs (the tag is in a comment); Dependabot opens pull requests to update them, the npm packages, the Python package and the base image. Review them: nothing merges by itself.
+* `android.yml`: the build job is read-only with no stored git credentials; the separate `publish` job (tags only) is the only one that can push the APK to `main` and create the release, and verifies the checksum first. The build is `assembleRelease` and fails if the APK is debuggable.
+* `security.yml` (push, pull request and weekly): `npm audit --audit-level=high` for `mobile/` and `ui/`, `pip-audit`, Bandit (high severity), Gitleaks over the full history, and Trivy over the repository (vulnerabilities, secrets, Dockerfile and workflow misconfiguration). Fix or document every failure before tagging.
+* `desktop.yml` attaches a build-provenance attestation to the desktop zips (`gh attestation verify <zip> --repo akash-8991/rea_marketwatch_app`).
+* Human settings (cannot be set from the repository): branch protection on `main` with required checks, MFA on the owner account, who may push `v*`, `mobile-v*` and `desktop-v*` tags, and enabling GitHub private vulnerability reporting (see SECURITY.md).

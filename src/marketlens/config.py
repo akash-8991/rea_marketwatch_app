@@ -35,6 +35,12 @@ class Settings:
     log_requests: bool = True      # one JSON line per API request on stderr
     require_login: bool = True     # accounts: every API call except sign-up/sign-in/recovery needs a session (--no-login turns it off)
     live_orders: bool = field(default_factory=lambda: os.environ.get("MARKETLENS_LIVE_ORDERS", "") == "1")   # allow real orders through the Zerodha adapter (off unless --enable-live-orders)
+    public_url: str = ""           # https://your.host when the app sits behind a TLS reverse proxy: adds Secure to the cookie and fixes the allowed Host
+    trusted_proxies: tuple = ()    # peer addresses of reverse proxies whose X-Forwarded-For / X-Forwarded-Proto are believed (default: none)
+    allowed_hosts: tuple = ()      # Host headers accepted when the server is bound beyond loopback (default: only the public_url host, if any)
+    open_signup: object = None     # None = automatic: open on loopback, closed after the first (administrator) account on any other address; True/False forces it
+    identity_recovery: object = None   # name + email + date of birth recovery: None = on for loopback only, True/False forces it
+    session_idle_seconds: int = 0  # 0 = automatic: no idle limit on loopback, 8 hours on any other address
     pbkdf2_iterations: int = 600_000   # password hashing cost (OWASP 2023 guidance for PBKDF2-SHA256)
 
 
@@ -43,6 +49,34 @@ settings = Settings()
 
 def inbox_dir() -> Path:
     return Path(settings.option_inbox) if settings.option_inbox else settings.data_dir / "option-inbox"
+
+
+def is_loopback(host=None):
+    return (host or settings.host) in ("127.0.0.1", "localhost", "::1", "[::1]")
+
+
+def signup_open(users_exist):
+    """May a new account be created? The very first account always may (it becomes the administrator); later ones follow the setting."""
+    if not users_exist:
+        return True
+    return is_loopback() if settings.open_signup is None else bool(settings.open_signup)
+
+
+def recovery_enabled():
+    return is_loopback() if settings.identity_recovery is None else bool(settings.identity_recovery)
+
+
+def session_idle():
+    from_setting = settings.session_idle_seconds
+    return from_setting if from_setting > 0 else (15 * 24 * 3600 if is_loopback() else 8 * 3600)
+
+
+def harden_files():
+    """Private by default: files this program creates are readable by their owner only (the data folder holds accounts, personal details and the Zerodha session). No effect on Windows."""
+    try:
+        os.umask(0o077)
+    except (AttributeError, OSError):
+        pass
 
 
 def use_bundled_certificates():
@@ -71,4 +105,8 @@ def configure(**kw) -> Settings:
             raise AttributeError(k)
         setattr(settings, k, Path(v) if k == "data_dir" else v)
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(settings.data_dir, 0o700)
+    except OSError:
+        pass
     return settings

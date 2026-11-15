@@ -185,6 +185,41 @@ export class Accounts {
     return changed;
   }
 
+  /** Signed-in password change: needs the current password. Ends every session. */
+  async changePassword(userPk, current, next) {
+    const key = 'change:' + userPk;
+    await this.checkLock(key);
+    const row = (await this.users()).find((u) => u.id === userPk);
+    if (!row || !(await this.verifyPassword(typeof current === 'string' ? current : '', row.pwHash))) { await this.fail(key); throw new AuthError('The current password is not correct.', 403, 'password'); }
+    await this.clear(key);
+    this.checkPassword(next, row.userId, row.email);
+    const pw = await this.hashPassword(next);
+    await lock('users', async () => {
+      const users = await this.users(), me = users.find((u) => u.id === userPk); me.pwHash = pw; me.updatedAt = new Date(this.now() * 1000).toISOString();
+      await this.s.set('users', users);
+      const sessions = (await this.s.get('sessions')) || {};
+      Object.keys(sessions).forEach((k) => { if (sessions[k].userId === userPk) delete sessions[k]; });
+      await this.s.set('sessions', sessions);
+    });
+    await this.log('password_changed', row.userId, 'changed while signed in; all sessions ended');
+  }
+
+  /** Delete the account, its sessions and personal details after re-entering the password. */
+  async deleteAccount(userPk, password) {
+    const key = 'delete:' + userPk;
+    await this.checkLock(key);
+    const row = (await this.users()).find((u) => u.id === userPk);
+    if (!row || !(await this.verifyPassword(typeof password === 'string' ? password : '', row.pwHash))) { await this.fail(key); throw new AuthError('The current password is not correct.', 403, 'password'); }
+    await this.clear(key);
+    await lock('users', async () => {
+      await this.s.set('users', (await this.users()).filter((u) => u.id !== userPk));
+      const sessions = (await this.s.get('sessions')) || {};
+      Object.keys(sessions).forEach((k) => { if (sessions[k].userId === userPk) delete sessions[k]; });
+      await this.s.set('sessions', sessions);
+    });
+    await this.log('account_deleted', row.userId, 'account, sessions and personal details deleted');
+  }
+
   /* ---------- sessions ---------- */
   async createSession(userPk) {
     const token = hex(crypto.getRandomValues(new Uint8Array(32)));

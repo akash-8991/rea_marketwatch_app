@@ -1,0 +1,18 @@
+# Keeps pinned GitHub Actions, npm packages, the Python package and the container base image current. Pull requests only: nothing merges by itself.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /mobile
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /ui
+    schedule: { interval: weekly }
+  - package-ecosystem: pip
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }

@@ -163,6 +163,8 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
         return json({ user: u }, 200, { setToken: await accounts.createSession(u.uid) });
       }
       if (path === '/api/auth/logout') { await accounts.endSession(token); return json({ ok: true }, 200, { setToken: '' }); }
+      if (path === '/api/auth/change-password') { await accounts.changePassword((await accounts.userForToken(token)).pk, g('currentPassword', 256), g('newPassword', 128)); return json({ changed: true }, 200, { setToken: '' }); }
+      if (path === '/api/auth/delete-account') { await accounts.deleteAccount((await accounts.userForToken(token)).pk, g('password', 256)); return json({ deleted: true }, 200, { setToken: '' }); }
       if (path === '/api/auth/forgot-user-id') return json({ userId: await accounts.forgotUserId(g('name'), g('email'), g('dob', 20)) });
       if (path === '/api/auth/update-credentials') {
         const changed = await accounts.updateCredentials(g('name'), g('email'), g('dob', 20), g('newUserId', 40), g('newPassword', 128));
@@ -212,7 +214,7 @@ export function createEngine({ storage = new MemoryStorage(), fetchFn, optionSou
       if (method !== 'GET' && method !== 'HEAD') return err(405, 'method not allowed');
       if (p === '/healthz') return json({ status: 'ok', version: VERSION, uptimeSeconds: Math.round((now() - started) / 100) / 10 });
       if (p === '/api/auth/status') return json({ loginRequired: cfg.requireLogin, usersExist: (await accounts.userCount()) > 0, signedIn: !!(user && cfg.requireLogin) });
-      if (p === '/api/auth/me') return user ? json({ user: { uid: user.pk, userId: user.userId, name: user.name } }) : err(401, 'not signed in');
+      if (p === '/api/auth/me') return user ? json({ user: { uid: user.pk, userId: user.userId, name: user.name, isAdmin: true } }) : err(401, 'not signed in');
       if (p === '/api/config') return json(configPayload());
       if (p === '/api/bootstrap') return json(await bootstrapPayload());
       if (p === '/api/extras') return json(await extrasPayload());

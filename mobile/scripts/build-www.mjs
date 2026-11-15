@@ -20,6 +20,8 @@ cpSync(join(mobile, 'shell', 'mobile.css'), join(www, 'css', 'mobile.css'));
 let html = readFileSync(join(www, 'index.html'), 'utf8');
 if (!html.includes('js/data.js')) throw new Error('index.html changed: cannot find the data.js script tag');
 html = html
+  // The desktop server sends a Content-Security-Policy header; the phone bundle is loaded from files, so the same policy goes into the page itself. Scripts only from the app, data only over HTTPS.
+  .replace('<head>', '<head>\n  <meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; connect-src \'self\' https:; base-uri \'none\'; form-action \'self\'; object-src \'none\'">')
   .replace('<meta name="viewport" content="width=device-width, initial-scale=1">', '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">')
   .replace('<link rel="stylesheet" href="css/style.css">', '<link rel="stylesheet" href="css/style.css">\n  <link rel="stylesheet" href="css/mobile.css">')
   .replace('<script type="module" src="js/data.js"></script>', '<script type="module" src="engine-boot.js"></script>\n  <script type="module" src="js/data.js"></script>');

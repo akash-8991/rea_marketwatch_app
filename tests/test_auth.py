@@ -325,7 +325,7 @@ class OverHttp(Fresh):
         self.assertEqual(self.call("POST", "/api/options/import", None, {"Content-Type": "text/csv", "X-Requested-With": "MarketLens"}, raw=b"x")[0], 401)
         for path in ("/", "/js/app.js", "/healthz", "/api/auth/status"):
             self.assertEqual(self.call("GET", path)[0], 200, path)
-        self.assertEqual(self.call("GET", "/api/auth/status")[2], {"loginRequired": True, "usersExist": False, "signedIn": False})
+        self.assertEqual(self.call("GET", "/api/auth/status")[2], {"loginRequired": True, "usersExist": False, "signedIn": False, "recoveryEnabled": True, "signupOpen": True})
 
     def test_signup_sets_a_hardened_cookie_and_signs_you_in(self):
         s, h, d = self.post("/api/auth/signup", self.SIGNUP)

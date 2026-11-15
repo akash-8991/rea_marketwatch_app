@@ -12,7 +12,9 @@ What lives here, and what does not:
     The browser's risk engine decides first; this gate is the independent second check that cannot be bypassed from the page.
   * Zerodha requires the API caller to have a whitelisted static IP for order placement. This app cannot arrange that; see docs/BROKER.md.
 Not tested against Zerodha's live servers here: the tests use a fake Kite. Treat the first live order as a test, with a tiny quantity."""
+import datetime
 import hashlib
+import math
 import json
 import os
 import re
@@ -34,6 +36,8 @@ KEY_RE = re.compile(r"^[A-Za-z0-9]{6,40}$")
 TAG_RE = re.compile(r"^[A-Za-z0-9]{1,20}$")
 SYM_RE = re.compile(r"^[A-Z0-9&_-]{1,24}$")
 MAX_ORDER_VALUE = 100_000     # rupees per order unless raised in the settings file
+MAX_DAILY_ORDERS = 50        # orders per India calendar day through this gate (raise it in broker.json as "max_daily_orders")
+MAX_DAILY_VALUE = 500_000     # rupees of limit-order value per day ("max_daily_value")
 MAX_OPS = 5                   # orders per second sent to Kite (Kite allows 10 a second per account)
 _lock = threading.Lock()
 _states = {}                  # login CSRF nonces -> expiry
@@ -54,9 +58,17 @@ def _path():
 def _read():
     try:
         with open(_path()) as f:
-            return json.load(f)
+            d = json.load(f)
     except (OSError, ValueError):
         return {}
+    if d.get("access_token") and time.time() >= d.get("token_expires", 0):   # an expired session token is of no use to anyone: do not leave it on disk
+        d.pop("access_token", None)
+        d.pop("token_expires", None)
+        try:
+            _write(d)
+        except OSError:
+            pass
+    return d
 
 
 def _write(d):
@@ -293,6 +305,11 @@ def validate(p, allow_market=False):
         raise BrokerError("bad side, product or validity")
     if otype not in ("LIMIT", "MARKET") or (otype == "MARKET" and not allow_market):
         raise BrokerError("Only limit orders are allowed (market orders are off by default).")
+    if not math.isfinite(price):
+        raise BrokerError("bad quantity or price")
+    allowed = [str(x).upper() for x in d.get("allowed_symbols") or []]
+    if allowed and sym not in allowed:
+        raise BrokerError(f"{sym} is not on the allowed-symbols list in broker.json.", 403)
     if qty < 1 or qty > 100000 or (otype == "LIMIT" and price <= 0):
         raise BrokerError("bad quantity or price")
     if otype == "LIMIT" and qty * price > cap:
@@ -305,28 +322,59 @@ def validate(p, allow_market=False):
     return f
 
 
+def _ledger():
+    """The orders this gate has sent, kept in the database so a restart cannot forget a tag or the day's totals."""
+    c = optiondb._db()
+    c.execute("CREATE TABLE IF NOT EXISTS broker_orders (tag TEXT PRIMARY KEY, order_id TEXT, day TEXT NOT NULL, value REAL NOT NULL, ts REAL NOT NULL)")
+    return c
+
+
+def _today():
+    return datetime.datetime.fromtimestamp(time.time() + 5.5 * 3600, datetime.timezone.utc).strftime("%Y-%m-%d")   # India calendar day
+
+
 def place_order(payload, allow_market=False):
-    """Send one order to Kite after every gate check. The same tag is never sent twice."""
+    """Send one order to Kite after every gate check. The same tag is never sent twice, not even after a restart, and the day's order count and value are capped."""
     f = validate(payload, allow_market)
+    d = _read()
+    value = int(f["quantity"]) * float(f.get("price", 0))
     with _lock:
         if f["tag"] in _tags:
             return {"order_id": _tags[f["tag"]], "duplicate": True}
+        with optiondb._lock:
+            led = _ledger()
+            seen = led.execute("SELECT order_id FROM broker_orders WHERE tag=?", (f["tag"],)).fetchone()
+            if seen:
+                _tags[f["tag"]] = seen[0]
+                return {"order_id": seen[0], "duplicate": True}
+            n, total = led.execute("SELECT COUNT(*), COALESCE(SUM(value), 0) FROM broker_orders WHERE day=?", (_today(),)).fetchone()
+            if n >= d.get("max_daily_orders", MAX_DAILY_ORDERS):
+                raise BrokerError(f"Daily order limit reached ({n}). Raise max_daily_orders in broker.json if you really want more.", 403)
+            if total + value > d.get("max_daily_value", MAX_DAILY_VALUE):
+                raise BrokerError(f"Daily order value limit reached ({total + value:,.0f} would exceed {d.get('max_daily_value', MAX_DAILY_VALUE):,.0f}).", 403)
         now = time.time()
         _sent[:] = [t for t in _sent if now - t < 1]
         if len(_sent) >= MAX_OPS:
             raise BrokerError("Too many orders in one second.", 429)
         _sent.append(now)
         _tags[f["tag"]] = None
+        with optiondb._lock:
+            _ledger().execute("INSERT INTO broker_orders (tag, order_id, day, value, ts) VALUES (?,?,?,?,?)", (f["tag"], None, _today(), value, now))
     try:
         data = _call("POST", "/orders/regular", form=f)
     except BrokerError as e:
         with _lock:
-            _tags.pop(f["tag"], None) if e.status < 500 else None   # a definite refusal frees the tag; an unknown outcome keeps it blocked (no blind retry)
+            if e.status < 500:   # a definite refusal frees the tag and the day's allowance; an unknown outcome keeps both blocked (no blind retry)
+                _tags.pop(f["tag"], None)
+                with optiondb._lock:
+                    _ledger().execute("DELETE FROM broker_orders WHERE tag=?", (f["tag"],))
         _audit("broker_order_failed", f"{f['transaction_type']} {f['quantity']} {f['tradingsymbol']} tag {f['tag']}: {str(e)[:120]}", "error")
         raise
     oid = (data or {}).get("order_id")
     with _lock:
         _tags[f["tag"]] = oid
+        with optiondb._lock:
+            _ledger().execute("UPDATE broker_orders SET order_id=? WHERE tag=?", (oid, f["tag"]))
     _audit("broker_order", f"{f['transaction_type']} {f['quantity']} {f['tradingsymbol']} {f['order_type']} @ {f.get('price', 'MKT')} tag {f['tag']} -> {oid}")
     return {"order_id": oid}
 
