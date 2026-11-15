@@ -1,0 +1,13 @@
+# Gitleaks configuration: the default rules plus an allow-list for made-up passwords that tests and the packaged self-check must use.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "fake credentials used by tests and by the desktop app's own --check self-test"
+paths = [
+  '''^tests/''',
+  '''^mobile/tests/''',
+]
+regexes = [
+  '''Zq9!vLm4#Rw7xK2p''',
+]

@@ -220,7 +220,7 @@ def load_static(rel):
     with open(full, "rb") as f:
         body = f.read()
     ctype = CTYPES.get(os.path.splitext(full)[1].lower(), "application/octet-stream")
-    entry = {"body": body, "ctype": ctype, "etag": '"%s"' % hashlib.sha1(body).hexdigest()[:20],
+    entry = {"body": body, "ctype": ctype, "etag": '"%s"' % hashlib.sha1(body, usedforsecurity=False).hexdigest()[:20],
              "gz": gzip.compress(body, 6, mtime=0) if len(body) > 1024 and ctype.startswith(COMPRESSIBLE) else None}
     _static_cache[full] = (key, entry)
     return entry
