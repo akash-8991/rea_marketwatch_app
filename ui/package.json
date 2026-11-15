@@ -8,7 +8,7 @@
     "check": "node check-built.mjs"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "4.3.3",
+    "@tailwindcss/cli": "4.3.5",
     "lucide-static": "1.72.0",
     "tailwindcss": "4.3.5"
   }
