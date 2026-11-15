@@ -27,7 +27,7 @@ marketlens-options-mcp = "marketlens.options_mcp:main"
 marketlens-desktop = "marketlens.desktop:main"
 
 [project.optional-dependencies]
-desktop = ["pywebview>=5", "certifi"]   # a native window; without it the desktop app uses Chrome/Edge in app mode
+desktop = ["pywebview>=6.2.1", "certifi"]   # a native window; without it the desktop app uses Chrome/Edge in app mode
 
 [tool.setuptools.packages.find]
 where = ["src"]
