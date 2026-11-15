@@ -1,11 +1,11 @@
 # MarketLens desktop/web edition as a container. No dependencies beyond Python.
-FROM python:3.12-slim AS build
+FROM python:3.15-slim AS build
 WORKDIR /src
 COPY pyproject.toml MANIFEST.in LICENSE README.md ./
 COPY src ./src
 RUN pip install --no-cache-dir build==1.2.2 && python -m build --wheel --outdir /wheels
 
-FROM python:3.12-slim
+FROM python:3.15-slim
 LABEL org.opencontainers.image.source="https://github.com/akash-8991/rea_marketwatch_app" \
       org.opencontainers.image.description="MarketLens: local NSE markets dashboard" \
       org.opencontainers.image.licenses="MIT"
