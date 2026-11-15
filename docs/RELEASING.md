@@ -25,9 +25,9 @@ against the Python engine's output (`android.yml`). Pull requests run tests and 
 # 1. bump versions (mobile/package.json is the Android version): pyproject.toml + src/marketlens/__init__.py (desktop), mobile/package.json (Android), update docs
 #    bundled stock list changed? run mobile/scripts/gen-sectors.py (a test fails if the phone's copy differs); apps also refresh it weekly by themselves
 # 2. make sure main is green (Actions tab), then:
-git tag v0.11.0        && git push origin v0.11.0          # container image :0.11.0 and :0.11
-git tag mobile-v0.14.0 && git push origin mobile-v0.14.0   # Android APK as a GitHub Release
-git tag desktop-v0.11.0 && git push origin desktop-v0.11.0   # desktop app zips for macOS, Windows and Linux as a GitHub Release (workflow "Desktop app")
+git tag v0.11.1        && git push origin v0.11.1          # container image :0.11.1 and :0.11
+git tag mobile-v0.14.1 && git push origin mobile-v0.14.1   # Android APK as a GitHub Release
+git tag desktop-v0.11.1 && git push origin desktop-v0.11.1   # desktop app zips for macOS, Windows and Linux as a GitHub Release (workflow "Desktop app")
 ```
 After a desktop release, update the three download links in the README "Get the app" table (they name the release tag and the version in the zip file names).
 The Android version code is the workflow run number, so each build can update the previous one if signed with the same key.
